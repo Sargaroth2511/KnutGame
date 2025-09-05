@@ -1,8 +1,32 @@
-# Iterative Development Plan – Razor Pages Backend + Phaser (TypeScript) Client – “Knut” Christmas Game
+# Iterative Development Plan – Razor Pages Backend + Phaser (TypeScript) Client – "Knut" Christmas Game
 
-**Goal:** A lightweight 2D skill game running in the browser (“Knut”: dodge falling Christmas trees, collect items), hosted in an ASP.NET Core **Razor Pages** app. The actual game is rendered with **Phaser 3 (TypeScript, Canvas/WebGL)**. Iterative development – each iteration delivers usable value.
+**Goal:** A lightweight 2D skill game running in the browser ("Knut": dodge falling Christmas trees, collect items), hosted in an ASP.NET Core **Razor Pages** app. The actual game is rendered with **Phaser 3 (TypeScript, Canvas/WebGL)**. Iterative development – each iteration delivers usable value.
 
-**High-Level Architecture**
+**Current Project Structure (Updated)**
+```
+KnutGame/
+  Server/KnutGame/KnutGame/    # ASP.NET Core Razor Pages (.NET 9)
+    Pages/                     # Razor Pages (Index = Game Shell)
+    wwwroot/                   # Built client assets (Vite output)
+    Services/                  # ViteManifestService, etc.
+    appsettings*.json
+    Program.cs
+    KnutGame.csproj
+  Client/                      # Phaser + TS, built with Vite
+    src/
+      main.ts                  # Game initialization
+      style.css                # Game styling
+      vite-env.d.ts            # Vite TypeScript types
+    index.html
+    package.json
+    tsconfig.json
+    vite.config.ts
+  docs/                        # Documentation
+    ACTIVITIES.md              # Activity log
+    iterationPlan.md           # This file
+  .gitattributes               # Line ending rules
+  .gitignore                   # Git ignore rules
+```
 ```
 repo/
   src/
@@ -42,7 +66,7 @@ repo/
 - **Performance budget:** Client initial bundle **≤ 5 MB gzip**. Target 60 FPS desktop, smooth on mobile.
 - **CI linting & tests:** Build fails on lint/test errors (Server & Client).
 - **.NET version:** .NET 9 preferred (fallback .NET 8 if 9 not available).
-- **Package manager:** `pnpm` preferred (fallback `npm`).
+- **Package manager:** `npm` (already configured - fallback `pnpm`).
 
 ---
 
@@ -254,32 +278,25 @@ public class ScoreEntry { public int Id; public string SessionId; public int Sco
 ## Developer Commands (for Agents & Humans)
 **Server**
 ```
-dotnet --info
-cd src/Server
- dotnet new webapp -n KnutGame -f net9.0
- dotnet add package Microsoft.EntityFrameworkCore.Sqlite
- dotnet add package Microsoft.EntityFrameworkCore.Design
- dotnet add package Serilog.AspNetCore
- dotnet add package Swashbuckle.AspNetCore
- dotnet build
- dotnet run
+cd Server/KnutGame
+dotnet build
+dotnet run
 ```
 
 **Client**
 ```
-cd src/Client
-pnpm create vite . -- --template vanilla-ts
-pnpm i
-pnpm i phaser
-pnpm dev
-pnpm build
+cd Client
+npm install
+npm run dev
+npm run build
 ```
 
 **Integration Build**
 ```
-pnpm -C src/Client build
-# Vite output to ../Server/wwwroot/game
-cd src/Server
+cd Client
+npm run build
+# Vite output to Server/KnutGame/KnutGame/wwwroot/game
+cd ../Server/KnutGame
 dotnet run
 ```
 

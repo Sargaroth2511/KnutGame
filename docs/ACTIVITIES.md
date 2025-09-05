@@ -54,3 +54,19 @@ The project builds successfully and is ready for development and deployment. The
 - **Kept Essential Files**:
   - `vite-env.d.ts` (required for Vite TypeScript integration)
 - **Verification**: Client builds successfully with cleaned code (reduced bundle size)
+
+### Iteration 1: Game Shell in Razor Pages + Embedded Client Build
+- **Index.cshtml Updated**: Replaced default ASP.NET template with game container and asset loading
+- **Asset Loading**: Configured to load built CSS and JS from `/game/assets/` with proper caching
+- **Server Configuration**: Static files serving already configured with 7-day cache for game assets
+- **Build Integration**: Vite configured to output to correct server location
+
+### Iteration 2: Phaser Setup + Player Movement
+- **Phaser Integration**: Added Phaser 3 to the project with proper TypeScript support
+- **MainScene Created**: Implemented game scene with preload/create/update lifecycle
+- **Player Entity**: Created green rectangle player with AABB physics and world bounds collision
+- **Input System**: Added keyboard (arrow keys + WASD) and touch controls (left/right screen halves)
+- **FPS Counter**: Implemented real-time FPS display in top-left corner
+- **Auto-Pause**: Game pauses when tab loses focus, resumes when regains focus
+- **Responsive Design**: Canvas resizes with window, touch scrolling prevented
+- **Build Size**: ~1.48 MB (expected for Phaser), within performance budget
