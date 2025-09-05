@@ -33,7 +33,8 @@ KnutGame/
 - ✅ **Iteration 0**: Skipped (existing repo foundation)
 - ✅ **Iteration 1**: Game Shell with embedded client build
 - ✅ **Iteration 2**: Phaser Setup + Player Movement (COMPLETED)
-- 🚧 **Iteration 3**: Obstacles & Collision (NEXT)
+- ✅ **Iteration 3**: Obstacles & Collision System (COMPLETED)
+- 🚧 **Iteration 4**: Items & Scoring + Local Highscore (NEXT)
 ```
 repo/
   src/
@@ -130,7 +131,7 @@ repo/
 
 ---
 
-## Iteration 3 – Obstacles (Trees), Spawn Logic, Collision, Lives 🚧 NEXT
+## Iteration 3 – Obstacles (Trees), Spawn Logic, Collision, Lives ✅ COMPLETED
 **Goal:** Falling tree placeholder objects, collision reduces lives, game over loop.
 
 **Tasks (Client)**
@@ -139,9 +140,13 @@ repo/
 3. **UI**: Lives (♥♥♥), timer/survival seconds, start/retry button.
 4. **Game over**: Retry starts fresh run; state fully reset.
 
-**Acceptance criteria**
+**Acceptance criteria** ✅ ALL MET
 - Playable loop (collision reduces lives, 0 = Game Over).
 - No memory leaks: objects pooled/reused.
+- Progressive difficulty with decreasing spawn intervals
+- Invulnerability frames after collision
+- Complete game state reset on restart
+- Score system with points per second survived
 
 ---
 

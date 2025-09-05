@@ -31,7 +31,16 @@ KnutGame/
 - Responsive sizing (800px desktop, full screen mobile)
 - Build optimization (1.48 MB bundle, within budget)
 
-### 🚧 Next: Iteration 3 - Obstacles & Collision
+**Iteration 3: Obstacles & Collision System**
+- Falling Christmas tree obstacles with random positioning
+- Collision detection and lives system (♥♥♥)
+- Progressive difficulty with increasing spawn rates
+- Game over state with restart functionality
+- Score system (10 points/second survived)
+- Object pooling to prevent memory leaks
+- Invulnerability frames after collision
+
+### 🚧 Next: Iteration 4 - Items & Scoring + Local Highscore
 
 **Planned Features:**
 - Falling Christmas trees as obstacles
@@ -87,7 +96,17 @@ KnutGame/
 
 - **Desktop**: WASD or Arrow Keys to move left/right
 - **Mobile**: Touch left/right screen halves
+- **Restart**: Click "Click to Restart" button or press SPACE after game over
 - **Auto-pause**: Game pauses when tab loses focus
+
+## Game Mechanics
+
+- **Objective**: Dodge falling Christmas trees as long as possible
+- **Lives**: Start with 3 lives (♥), lose one on collision
+- **Invulnerability**: 1 second of invulnerability after being hit (player turns red)
+- **Scoring**: 10 points per second survived
+- **Difficulty**: Spawn rate increases over time (2s to 0.8s intervals)
+- **Game Over**: When all lives are lost, click to restart
 
 ## Build & Deployment
 

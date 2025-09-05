@@ -61,24 +61,18 @@ The project builds successfully and is ready for development and deployment. The
 - **Server Configuration**: Static files serving already configured with 7-day cache for game assets
 - **Build Integration**: Vite configured to output to correct server location
 
-### Iteration 2: Phaser Setup + Player Movement
-- **Phaser Integration**: Added Phaser 3 to the project with proper TypeScript support
-- **MainScene Created**: Implemented game scene with preload/create/update lifecycle
-- **Player Entity**: Created green rectangle player with AABB physics and world bounds collision
-- **Input System**: Added keyboard (arrow keys + WASD) and touch controls (left/right screen halves)
-- **FPS Counter**: Implemented real-time FPS display in top-left corner
-- **Auto-Pause**: Game pauses when tab loses focus, resumes when regains focus
-- **Responsive Design**: Canvas resizes with window, touch scrolling prevented
-- **Visual Improvements**: Added border, shadow, and gradient background to make game area stand out
-- **Responsive Sizing**: 800px width on desktop, full screen on mobile (< 768px)
-- **Fixed Scaling Issues**: Changed scale mode to NONE to prevent initial growing effect
-- **Sharp Text Rendering**: Added high resolution and stroke to FPS counter for crisp display
-- **Title Removed**: Cleaned up UI by removing title for full-screen game experience
-- **Fixed Positioning**: Resolved downward movement issue with proper fixed positioning
-- **Black Background**: Set full black background for immersive experience
-- **Player Positioning**: Positioned green box at 10% from bottom of game board
-- **Z-Index Priority**: Game board stays on top of all other elements
-- **Layout Cleanup**: Removed ASP.NET Core header/footer/navbar by setting Layout = null
-- **Minimal HTML**: Index.cshtml now renders clean HTML without Bootstrap/layout elements
-- **Build Optimization**: Increased chunkSizeWarningLimit to 2MB to suppress Phaser size warnings
-- **Build Size**: ~1.48 MB (expected for Phaser), within performance budget
+### Iteration 3: Obstacles & Collision System
+- **Obstacle Spawning**: Implemented falling Christmas tree obstacles with random X-position
+- **Variable Fall Speed**: Obstacles fall at 150-250 pixels/second with randomization
+- **Progressive Difficulty**: Spawn interval decreases from 2s to 0.8s over time
+- **Collision Detection**: AABB collision between player and obstacles using Phaser.Geom.Intersects
+- **Lives System**: 3 lives with ♥ display, reduces on collision
+- **Invulnerability Frames**: 1-second invulnerability after hit with visual feedback (red player)
+- **Game Over State**: Pause physics, display "GAME OVER" and restart button
+- **Restart Functionality**: Click restart button or press SPACE to restart
+- **Score System**: Points per second survived (10 points/second)
+- **Timer Display**: Real-time survival timer in top-left
+- **Object Pooling**: Reuse obstacle objects to prevent memory leaks
+- **UI Updates**: Lives (♥♥♥), timer, score display with proper z-index layering
+- **Game State Management**: Proper reset of all game variables on restart
+- **Build Size**: Maintained 1.48 MB bundle within performance budget
