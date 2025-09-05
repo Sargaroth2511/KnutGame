@@ -5,6 +5,32 @@
 **Current Project Structure (Updated)**
 ```
 KnutGame/
+  src/
+    KnutGame.Server/     # ASP.NET Core Razor Pages (.NET 9)
+      Pages/             # Razor Pages (Index = Game Shell)
+      wwwroot/           # Built client assets (Vite output)
+      Services/          # ViteManifestService, etc.
+      appsettings*.json
+      Program.cs
+      KnutGame.csproj
+    KnutGame.Client/     # Phaser + TS, built with Vite
+      src/
+        main.ts          # Game initialization
+        style.css        # Game styling
+        vite-env.d.ts    # Vite TypeScript types
+      index.html
+      package.json
+      tsconfig.json
+      vite.config.ts
+  docs/                  # Documentation
+    ACTIVITIES.md        # Activity log
+    iterationPlan.md     # This file
+  .gitattributes         # Line ending rules
+  .gitignore             # Git ignore rules
+  README.md              # Project documentation
+```
+```
+KnutGame/
   Server/KnutGame/KnutGame/    # ASP.NET Core Razor Pages (.NET 9)
     Pages/                     # Razor Pages (Index = Game Shell)
     wwwroot/                   # Built client assets (Vite output)
@@ -301,7 +327,7 @@ dotnet run
 
 **Client**
 ```
-cd Client
+cd src/KnutGame.Client
 npm install
 npm run dev
 npm run build
@@ -309,10 +335,10 @@ npm run build
 
 **Integration Build**
 ```
-cd Client
+cd src/KnutGame.Client
 npm run build
-# Vite output to Server/KnutGame/KnutGame/wwwroot/game
-cd ../Server/KnutGame
+# Vite output to src/KnutGame.Server/wwwroot/game
+cd ../KnutGame.Server
 dotnet run
 ```
 

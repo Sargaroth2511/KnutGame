@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36414.22 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KnutGame", "KnutGame\KnutGame.csproj", "{381687AA-B71F-47AE-914E-F09DF26D46A0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KnutGame", "src\KnutGame.Server\KnutGame.csproj", "{381687AA-B71F-47AE-914E-F09DF26D46A0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

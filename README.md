@@ -6,9 +6,11 @@ A festive 2D game built with ASP.NET Core 9 backend and Phaser 3 frontend, featu
 
 ```
 KnutGame/
-├── Client/          # Vite + TypeScript + Phaser frontend
-├── Server/          # ASP.NET Core 9 backend with Razor Pages
-└── docs/           # Project documentation
+├── src/
+│   ├── KnutGame.Client/     # Vite + TypeScript + Phaser frontend
+│   └── KnutGame.Server/     # ASP.NET Core 9 backend with Razor Pages
+├── docs/                    # Project documentation
+└── README.md
 ```
 
 ## Current Status
@@ -72,21 +74,21 @@ KnutGame/
 
 3. **Client Setup**
    ```bash
-   cd Client
+   cd src/KnutGame.Client
    npm install
    npm run build
    ```
 
 4. **Server Setup**
    ```bash
-   cd ../Server/KnutGame
+   cd src/KnutGame.Server
    dotnet restore
    dotnet build
    ```
 
 5. **Run Development**
    ```bash
-   # From Server/KnutGame directory
+   # From src/KnutGame.Server directory
    dotnet run
    ```
 
@@ -110,7 +112,7 @@ KnutGame/
 
 ## Build & Deployment
 
-- Client builds to `Server/KnutGame/wwwroot/game/`
+- Client builds to `src/KnutGame.Server/wwwroot/game/`
 - ASP.NET Core serves static assets and Razor Pages
 - Production build optimized for performance
 
