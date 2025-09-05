@@ -27,3 +27,18 @@ This file tracks the activities and changes made to the KnutGame project.
 
 ### Current Status
 The project builds successfully and is ready for development and deployment. The client assets are correctly integrated with the server for proper serving.
+
+## September 5, 2025 (Continued)
+
+### Git Setup and Line Ending Fixes
+- **Issue**: Git warning about LF/CRLF line ending conversion in `Client/tsconfig.json`
+- **Solution**: Created `.gitattributes` file to normalize line endings:
+  - JSON files: LF (Unix line endings)
+  - Markdown files: LF
+  - YAML files: LF
+  - Other text files: Auto-normalization
+- **Additional Setup**:
+  - Created comprehensive `.gitignore` to exclude Visual Studio files, build outputs, and common artifacts
+  - Excluded `.vs/` directory from Git tracking
+  - Committed all project files with proper line ending normalization
+- **Result**: Line ending warnings resolved, consistent file formats across the repository
