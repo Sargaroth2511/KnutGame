@@ -1,0 +1,15 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# JSON files should use LF (Unix) line endings
+*.json text eol=lf
+
+# TypeScript config files should use LF
+tsconfig.json text eol=lf
+
+# Markdown files should use LF
+*.md text eol=lf
+
+# YAML files should use LF
+*.yml text eol=lf
+*.yaml text eol=lf
