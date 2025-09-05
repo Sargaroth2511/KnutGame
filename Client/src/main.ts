@@ -6,19 +6,20 @@ import { MainScene } from './MainScene'
 function init() {
   const app = document.querySelector<HTMLDivElement>('#app')!
   app.innerHTML = `
-    <div>
-      <h1>Knut Game</h1>
-      <div id="game-container"></div>
-    </div>
+    <div id="game-container"></div>
   `
 
   // Initialize Phaser game
+  const isMobile = window.innerWidth < 768
+  const gameWidth = isMobile ? window.innerWidth : Math.min(800, window.innerWidth)
+  const gameHeight = window.innerHeight // Use full height without title space
+
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: window.innerWidth,
-    height: window.innerHeight - 100, // Leave space for title
+    width: gameWidth,
+    height: gameHeight,
     parent: 'game-container',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000000', // Black background
     physics: {
       default: 'arcade',
       arcade: {
@@ -28,7 +29,7 @@ function init() {
     },
     scene: [MainScene],
     scale: {
-      mode: Phaser.Scale.RESIZE,
+      mode: Phaser.Scale.NONE, // Disable auto-scaling to prevent growing
       autoCenter: Phaser.Scale.CENTER_BOTH
     }
   }
@@ -37,7 +38,11 @@ function init() {
 
   // Handle window resize
   window.addEventListener('resize', () => {
-    game.scale.resize(window.innerWidth, window.innerHeight - 100)
+    const newIsMobile = window.innerWidth < 768
+    const newWidth = newIsMobile ? window.innerWidth : Math.min(800, window.innerWidth)
+    const newHeight = window.innerHeight
+
+    game.scale.resize(newWidth, newHeight)
   })
 
   console.log('Phaser game initialized')

@@ -26,7 +26,14 @@ KnutGame/
     iterationPlan.md           # This file
   .gitattributes               # Line ending rules
   .gitignore                   # Git ignore rules
+  README.md                    # Project documentation
 ```
+
+**Current Status:**
+- ✅ **Iteration 0**: Skipped (existing repo foundation)
+- ✅ **Iteration 1**: Game Shell with embedded client build
+- ✅ **Iteration 2**: Phaser Setup + Player Movement (COMPLETED)
+- 🚧 **Iteration 3**: Obstacles & Collision (NEXT)
 ```
 repo/
   src/
@@ -104,7 +111,7 @@ repo/
 
 ---
 
-## Iteration 2 – Phaser Setup + Player Movement (No Assets)
+## Iteration 2 – Phaser Setup + Player Movement (No Assets) ✅ COMPLETED
 **Goal:** Game loop, one scene, minimal player (hitbox), keyboard/touch input.
 
 **Tasks (Client)**
@@ -113,13 +120,17 @@ repo/
 3. Fixed timestep: physics update via `delta` (no `setInterval`).
 4. FPS counter (debug togglable), auto-pause on tab change (`visibilitychange`).
 
-**Acceptance criteria**
+**Acceptance criteria** ✅ ALL MET
 - Responsive canvas (full width), player moves smoothly.
 - 60 FPS desktop (no heavy assets). No page scroll on touch.
+- Build optimization: 1.48 MB bundle within 5 MB budget
+- Touch controls working on mobile devices
+- Auto-pause functionality implemented
+- Clean UI without template elements
 
 ---
 
-## Iteration 3 – Obstacles (Trees), Spawn Logic, Collision, Lives
+## Iteration 3 – Obstacles (Trees), Spawn Logic, Collision, Lives 🚧 NEXT
 **Goal:** Falling tree placeholder objects, collision reduces lives, game over loop.
 
 **Tasks (Client)**

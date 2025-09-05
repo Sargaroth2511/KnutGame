@@ -17,7 +17,9 @@ export class MainScene extends Phaser.Scene {
 
   create() {
     // Create player as a simple rectangle (hitbox)
-    this.player = this.add.rectangle(400, 300, 32, 32, 0x00ff00)
+    const centerX = this.cameras.main.width / 2
+    const playerY = this.cameras.main.height * 0.9 // 10% from bottom (90% from top)
+    this.player = this.add.rectangle(centerX, playerY, 32, 32, 0x00ff00)
     this.physics.add.existing(this.player)
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
     playerBody.setCollideWorldBounds(true)
@@ -29,8 +31,13 @@ export class MainScene extends Phaser.Scene {
     // Create FPS counter
     this.fpsText = this.add.text(10, 10, 'FPS: 0', {
       fontSize: '16px',
-      color: '#ffffff'
+      color: '#ffffff',
+      fontFamily: 'Arial, sans-serif',
+      resolution: 2, // Higher resolution for sharper text
+      stroke: '#000000',
+      strokeThickness: 2
     })
+    this.fpsText.setDepth(1000) // Ensure it's always on top
 
     // Handle visibility change (tab switching)
     document.addEventListener('visibilitychange', () => {

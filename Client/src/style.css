@@ -8,37 +8,54 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #1a1a1a;
+  background-color: #000000; /* Black background */
   color: white;
-  overflow: hidden; /* Prevent scrolling */
-  touch-action: none; /* Prevent touch scrolling on mobile */
+  overflow: hidden;
+  touch-action: none;
 }
 
 #app {
   width: 100%;
   height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 0;
   display: flex;
-  flex-direction: column;
-}
-
-h1 {
-  text-align: center;
-  margin: 1rem 0;
-  color: #646cff;
-  z-index: 1000;
-  position: relative;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999; /* Ensure game stays on top */
 }
 
 #game-container {
-  flex: 1;
   position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  z-index: 10000; /* Game container on top */
+  background-color: #747bff;
+}
+
+/* Game canvas container styling */
+#game-container > div {
+  border: none;
+  box-shadow: none;
+  background: #000000; /* Black background for game container */
   overflow: hidden;
+  z-index: 10001; /* Highest z-index for game canvas */
 }
 
 /* Phaser canvas styling */
 canvas {
   display: block;
   margin: 0 auto;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* Prevent text selection */
