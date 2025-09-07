@@ -94,6 +94,19 @@ KnutGame/
 
    Server will start on `https://localhost:7104` (or configured port)
 
+## Tests
+
+- Server (xUnit):
+  - Location: `tests/KnutGame.Server.Tests`
+  - Run: `dotnet test`
+  - Covers: Razor Index responds 200 and manifest + asset serving from `/game/*`.
+
+- Client (Vitest):
+  - Location: `src/KnutGame.Client/test`
+  - Install dev deps: `npm install` (adds vitest)
+  - Run: `npm run test` or `npm run test:run`
+  - Covers: `MainScene` basics (defaults, method presence) and Vite config validation.
+
 ## Game Controls
 
 - **Desktop**: WASD or Arrow Keys to move left/right

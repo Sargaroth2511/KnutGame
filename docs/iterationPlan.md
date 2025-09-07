@@ -95,8 +95,10 @@ repo/
 ---
 
 ## Agent Contract (important for coding agents)
-- **Follow the order strictly** per iteration. Only move to the next iteration once acceptance criteria are met.
-- **No major refactors** unless specified in the plan.
+- **Strict order:** Complete one iteration at a time and meet acceptance criteria before moving on.
+- **Test-first:** Each iteration must add/update tests before the feature is considered done. No feature closes without tests.
+- **Refactor after approval:** After tests and features are in, request approval. Only then refactor for clarity/perf without changing behavior.
+- **No major refactors** unless specified or approved.
 - **Performance budget:** Client initial bundle **≤ 5 MB gzip**. Target 60 FPS desktop, smooth on mobile.
 - **CI linting & tests:** Build fails on lint/test errors (Server & Client).
 - **.NET version:** .NET 9 preferred (fallback .NET 8 if 9 not available).
@@ -123,7 +125,7 @@ repo/
 
 ---
 
-## Iteration 1 – Game Shell in Razor Pages + Embedded Client Build
+## Iteration 1 – Game Shell in Razor Pages + Embedded Client Build (with tests)
 **Goal:** Razor Page `Index.cshtml` loads the **built** client (not Dev server) from `wwwroot`.
 
 **Tasks**
@@ -135,10 +137,13 @@ repo/
 **Acceptance criteria**
 - `dotnet run` at `https://localhost:5179` shows client “Hello Canvas” (placeholder), no separate Vite dev server.
 - No inline `<script>` errors; CSP-compatible (nonce optional for now).
+- Server integration tests exist and cover:
+  - GET `/` returns 200 and contains `#app` container.
+  - `/game/manifest.json` served and referenced JS/CSS assets respond 200.
 
 ---
 
-## Iteration 2 – Phaser Setup + Player Movement (No Assets) ✅ COMPLETED
+## Iteration 2 – Phaser Setup + Player Movement (No Assets) ✅ COMPLETED (with tests)
 **Goal:** Game loop, one scene, minimal player (hitbox), keyboard/touch input.
 
 **Tasks (Client)**
@@ -154,10 +159,14 @@ repo/
 - Touch controls working on mobile devices
 - Auto-pause functionality implemented
 - Clean UI without template elements
+- Client unit tests exist and cover:
+  - `MainScene` exported and constructible.
+  - Initial state defaults (e.g., lives = 3, spawnInterval = 2000).
+  - Vite config `base='/game/'` and `build.outDir` points to server `wwwroot/game`.
 
 ---
 
-## Iteration 3 – Obstacles (Trees), Spawn Logic, Collision, Lives ✅ COMPLETED
+## Iteration 3 – Obstacles (Trees), Spawn Logic, Collision, Lives ✅ COMPLETED (with tests)
 **Goal:** Falling tree placeholder objects, collision reduces lives, game over loop.
 
 **Tasks (Client)**
@@ -173,10 +182,11 @@ repo/
 - Invulnerability frames after collision
 - Complete game state reset on restart
 - Score system with points per second survived
+- Client unit tests exist and cover the presence of obstacle/collision methods on `MainScene` API surface (no Phaser runtime needed).
 
 ---
 
-## Iteration 4 – Items & Scoring + Local Highscore
+## Iteration 4 – Items & Scoring + Local Highscore (test-first)
 **Goal:** Collectible items (points, extra life, slowmo), local score system.
 
 **Tasks (Client)**
@@ -187,6 +197,7 @@ repo/
 **Acceptance criteria**
 - Scores increase logically; items work as expected.
 - Local highscore persists between sessions.
+- Unit tests for scoring, multipliers, and local-storage persistence.
 
 ---
 
@@ -320,9 +331,10 @@ public class ScoreEntry { public int Id; public string SessionId; public int Sco
 ## Developer Commands (for Agents & Humans)
 **Server**
 ```
-cd Server/KnutGame
+cd src/KnutGame.Server
 dotnet build
 dotnet run
+dotnet test   # run server tests
 ```
 
 **Client**
@@ -331,6 +343,7 @@ cd src/KnutGame.Client
 npm install
 npm run dev
 npm run build
+npm run test   # run vitest tests
 ```
 
 **Integration Build**
@@ -365,4 +378,3 @@ dotnet run
 - SignalR live events (Global Christmas storm: 30s double points).
 - Share-image generator (server renders social card with score & greeting).
 - PWA manifest + offline start (game only, no server features).
-

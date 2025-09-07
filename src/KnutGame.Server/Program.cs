@@ -64,3 +64,6 @@ app.UseAuthorization();
 app.MapRazorPages();
 
 app.Run();
+
+// Enable WebApplicationFactory<T> usage in tests
+public partial class Program { }

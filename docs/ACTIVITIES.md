@@ -76,3 +76,26 @@ The project builds successfully and is ready for development and deployment. The
 - **UI Updates**: Lives (♥♥♥), timer, score display with proper z-index layering
 - **Game State Management**: Proper reset of all game variables on restart
 - **Build Size**: Maintained 1.48 MB bundle within performance budget
+
+## September 7, 2025
+
+### Process Update: Test-First Iterations + Refactor After Approval
+- Updated `docs/iterationPlan.md` to enforce test-first per iteration and explicit refactor-after-approval policy.
+
+### Tests Implemented for Iterations 1–3
+- **Server (xUnit + WebApplicationFactory)**
+  - Added test project at `tests/KnutGame.Server.Tests`.
+  - Tests cover:
+    - GET `/` returns 200 and contains `#app` container (Iteration 1).
+    - `/game/manifest.json` is served and referenced JS/CSS assets return 200 (Iteration 1).
+  - Minor addition to server: declared `public partial class Program` to enable `WebApplicationFactory<Program>`.
+
+- **Client (Vitest)**
+  - Added test stubs under `src/KnutGame.Client/test/` and scripts in `package.json`.
+  - Tests cover:
+    - `MainScene` existence/constructibility; default state checks (lives=3, spawnInterval=2000) (Iterations 2–3).
+    - Presence of obstacle/collision methods on `MainScene` (Iteration 3).
+    - Vite config assertions: `base='/game/'`, output path to server `wwwroot/game` (Iteration 1).
+
+### Next
+- Upon approval, proceed to refactor `Index.cshtml` to consume `ViteManifestService` (manifest-driven assets) and tidy related code paths.
