@@ -6,8 +6,20 @@ import {
   INVULNERABILITY_MS,
   SPAWN_INTERVAL_START,
   SPAWN_INTERVAL_MIN,
-  SPAWN_INTERVAL_DECAY
+  SPAWN_INTERVAL_DECAY,
+  BASE_POINTS_PER_SEC,
+  MULTIPLIER_X,
+  MULTIPLIER_MS,
+  SLOWMO_FACTOR,
+  SLOWMO_MS,
+  LIFE_MAX,
+  POINTS_ITEM_BONUS,
+  ITEM_SPAWN_INTERVAL_MS,
+  ITEM_DROP_CHANCE
 } from './gameConfig'
+import { ItemType } from './items'
+import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
+import { getHighscore, setHighscore } from './services/localHighscore'
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle
@@ -32,6 +44,15 @@ export class MainScene extends Phaser.Scene {
   private invulnerableTimer: number = 0
   private score: number = 0
   private scoreText!: Phaser.GameObjects.Text
+
+  // Iteration 4 additions
+  private scoreState = createScoreState()
+  private items!: Phaser.GameObjects.Group
+  private itemPool: Phaser.GameObjects.Rectangle[] = []
+  private itemSpawnTimer: number = 0
+  private itemSpawnInterval: number = ITEM_SPAWN_INTERVAL_MS
+  private multiplierText!: Phaser.GameObjects.Text
+  private bestText!: Phaser.GameObjects.Text
 
   constructor() {
     super({ key: 'MainScene' })
@@ -99,8 +120,36 @@ export class MainScene extends Phaser.Scene {
     this.scoreText.setOrigin(1, 0) // Right-align
     this.scoreText.setDepth(1000)
 
+    // Create multiplier display
+    this.multiplierText = this.add.text(this.cameras.main.width - 10, 40, '', {
+      fontSize: '16px',
+      color: '#ff8800',
+      fontFamily: 'Arial, sans-serif',
+      resolution: 2,
+      stroke: '#000000',
+      strokeThickness: 2
+    })
+    this.multiplierText.setOrigin(1, 0) // Right-align
+    this.multiplierText.setDepth(1000)
+
+    // Create best score display
+    const bestScore = getHighscore()
+    this.bestText = this.add.text(this.cameras.main.width - 10, 70, `Best: ${bestScore}`, {
+      fontSize: '16px',
+      color: '#ffffff',
+      fontFamily: 'Arial, sans-serif',
+      resolution: 2,
+      stroke: '#000000',
+      strokeThickness: 2
+    })
+    this.bestText.setOrigin(1, 0) // Right-align
+    this.bestText.setDepth(1000)
+
     // Create obstacles group
     this.obstacles = this.physics.add.group()
+
+    // Create items group
+    this.items = this.physics.add.group()
 
     // Initialize game state
     this.gameStartTime = this.time.now
@@ -156,9 +205,17 @@ export class MainScene extends Phaser.Scene {
     const elapsedSeconds = (time - this.gameStartTime) / 1000
     this.timerText.setText(`Time: ${elapsedSeconds.toFixed(1)}s`)
 
-    // Update score (points per second survived)
-    this.score = Math.floor(elapsedSeconds * 10)
+    // Update score using new scoring system
+    this.scoreState = tickScore(this.scoreState, delta, BASE_POINTS_PER_SEC)
+    this.score = this.scoreState.score
     this.scoreText.setText(`Score: ${this.score}`)
+
+    // Update multiplier display
+    if (this.scoreState.multiplier > 1) {
+      this.multiplierText.setText(`x${this.scoreState.multiplier}`)
+    } else {
+      this.multiplierText.setText('')
+    }
 
     // Handle invulnerability timer
     if (this.invulnerable) {
@@ -194,11 +251,22 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
+    // Spawn items
+    this.itemSpawnTimer += delta
+    if (this.itemSpawnTimer >= this.itemSpawnInterval) {
+      if (Math.random() < ITEM_DROP_CHANCE) {
+        this.spawnItem()
+      }
+      this.itemSpawnTimer = 0
+    }
+
     // Update obstacles (move them down)
+    const slowMoFactorValue = slowMoFactor(this.scoreState, SLOWMO_FACTOR)
     this.obstacles.children.each((obstacle) => {
       const obs = obstacle as Phaser.GameObjects.Rectangle
       const obsBody = obs.body as Phaser.Physics.Arcade.Body
-      obsBody.setVelocityY(FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN)) // Variable fall speed
+      const baseSpeed = FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN)
+      obsBody.setVelocityY(baseSpeed * slowMoFactorValue) // Apply slow motion
 
       // Remove obstacles that have fallen off screen
       if (obs.y > this.cameras.main.height + 50) {
@@ -208,8 +276,24 @@ export class MainScene extends Phaser.Scene {
       return true
     })
 
+    // Update items (move them down)
+    this.items.children.each((item) => {
+      const itm = item as Phaser.GameObjects.Rectangle
+      const itmBody = itm.body as Phaser.Physics.Arcade.Body
+      const baseSpeed = FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN)
+      itmBody.setVelocityY(baseSpeed * slowMoFactorValue) // Apply slow motion
+
+      // Remove items that have fallen off screen
+      if (itm.y > this.cameras.main.height + 50) {
+        this.removeItem(itm)
+      }
+
+      return true
+    })
+
     // Check collisions
     this.checkCollisions()
+    this.checkItemCollisions()
   }
 
   private pauseGame() {
@@ -268,6 +352,96 @@ export class MainScene extends Phaser.Scene {
       }
       return true
     })
+  }
+
+  private spawnItem() {
+    // Get item from pool or create new one
+    let item = this.itemPool.pop()
+    
+    // Always assign a random item type and color
+    const itemTypes = [ItemType.POINTS, ItemType.LIFE, ItemType.SLOWMO, ItemType.MULTI]
+    const randomType = itemTypes[Math.floor(Math.random() * itemTypes.length)]
+    
+    let color: number
+    switch (randomType) {
+      case ItemType.POINTS: color = 0xffff00; break // Yellow
+      case ItemType.LIFE: color = 0xff00ff; break // Magenta
+      case ItemType.SLOWMO: color = 0x00ffff; break // Cyan
+      case ItemType.MULTI: color = 0xff8800; break // Orange
+      default: color = 0xffffff;
+    }
+    
+    if (!item) {
+      // Create new item
+      item = this.add.rectangle(0, -50, 20, 20, color)
+      this.physics.add.existing(item)
+    } else {
+      // Reuse item from pool - update its color
+      item.setFillStyle(color)
+    }
+    
+    // Store the item type in the rectangle's data
+    item.setData('itemType', randomType)
+
+    // Position randomly across the top
+    const randomX = Phaser.Math.Between(50, this.cameras.main.width - 50)
+    item.setPosition(randomX, -50)
+
+    // Add to items group
+    this.items.add(item)
+
+    // Make sure it's active and visible
+    item.setActive(true)
+    item.setVisible(true)
+  }
+
+  private removeItem(item: Phaser.GameObjects.Rectangle) {
+    // Remove from items group
+    this.items.remove(item)
+
+    // Return to pool
+    item.setActive(false)
+    item.setVisible(false)
+    this.itemPool.push(item)
+  }
+
+  private checkItemCollisions() {
+    this.items.children.each((item) => {
+      const itm = item as Phaser.GameObjects.Rectangle
+      if (Phaser.Geom.Intersects.RectangleToRectangle(
+        this.player.getBounds(),
+        itm.getBounds()
+      )) {
+        this.handleItemCollection(itm)
+        return false // Stop checking other items
+      }
+      return true
+    })
+  }
+
+  private handleItemCollection(item: Phaser.GameObjects.Rectangle) {
+    const itemType = item.getData('itemType') as ItemType
+    
+    switch (itemType) {
+      case ItemType.POINTS:
+        this.scoreState = applyPoints(this.scoreState, POINTS_ITEM_BONUS)
+        break
+      case ItemType.LIFE:
+        if (this.lives < LIFE_MAX) {
+          this.lives++
+          this.livesText.setText(`Lives: ${'♥'.repeat(this.lives)}`)
+        }
+        break
+      case ItemType.SLOWMO:
+        this.scoreState = applySlowMo(this.scoreState, SLOWMO_MS)
+        break
+      case ItemType.MULTI:
+        this.scoreState = applyMultiplier(this.scoreState, MULTIPLIER_X, MULTIPLIER_MS)
+        break
+    }
+    
+    // Remove the collected item
+    this.removeItem(item)
   }
 
   private handleCollision() {
@@ -335,15 +509,42 @@ export class MainScene extends Phaser.Scene {
         this.restartGame()
       }
     })
+
+    // Update highscore if current score is better
+    const currentScore = this.scoreState.score
+    const currentBest = getHighscore()
+    if (currentScore > currentBest) {
+      setHighscore(currentScore)
+      this.bestText.setText(`Best: ${currentScore}`)
+      
+      // Optional: Show "New Highscore!" message
+      const newHighscoreText = this.add.text(
+        this.cameras.main.width / 2,
+        this.cameras.main.height / 2 + 100,
+        'NEW HIGHSCORE!',
+        {
+          fontSize: '20px',
+          color: '#ffff00',
+          fontFamily: 'Arial, sans-serif',
+          resolution: 2,
+          stroke: '#000000',
+          strokeThickness: 2
+        }
+      )
+      newHighscoreText.setOrigin(0.5)
+      newHighscoreText.setDepth(1000)
+    }
   }
 
   private restartGame() {
     // Reset game state
     this.lives = 3
+    this.scoreState = createScoreState()
     this.score = 0
     this.isGameOver = false
     this.spawnTimer = 0
     this.spawnInterval = SPAWN_INTERVAL_START
+    this.itemSpawnTimer = 0
     this.invulnerable = false
     this.gameStartTime = this.time.now
 
@@ -354,6 +555,12 @@ export class MainScene extends Phaser.Scene {
     // Clear obstacles
     this.obstacles.children.each((obstacle) => {
       this.removeObstacle(obstacle as Phaser.GameObjects.Rectangle)
+      return true
+    })
+
+    // Clear items
+    this.items.children.each((item) => {
+      this.removeItem(item as Phaser.GameObjects.Rectangle)
       return true
     })
 
@@ -368,6 +575,7 @@ export class MainScene extends Phaser.Scene {
     // Update UI
     this.livesText.setText(`Lives: ${'♥'.repeat(this.lives)}`)
     this.scoreText.setText('Score: 0')
+    this.multiplierText.setText('')
 
     // Resume physics
     this.physics.resume()

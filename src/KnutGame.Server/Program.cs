@@ -42,9 +42,16 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 // Extra: long cache for built game assets under /wwwroot/game
+var gameDir = Path.Combine(app.Environment.WebRootPath, "game");
+if (!Directory.Exists(gameDir))
+{
+    Directory.CreateDirectory(gameDir);
+    app.Logger.LogWarning("Created missing game assets directory at {Dir}. Run `npm run build` in src/KnutGame.Client to populate manifest and assets.", gameDir);
+}
+
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(Path.Combine(app.Environment.WebRootPath, "game")),
+    FileProvider = new PhysicalFileProvider(gameDir),
     RequestPath = "/game",
     OnPrepareResponse = ctx =>
     {
