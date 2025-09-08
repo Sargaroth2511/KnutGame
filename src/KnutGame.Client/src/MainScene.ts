@@ -2,7 +2,6 @@ import Phaser from 'phaser'
 import {
   MOVE_SPEED,
   FALL_SPEED_MIN,
-  FALL_SPEED_MAX,
   INVULNERABILITY_MS,
   SPAWN_INTERVAL_START,
   SPAWN_INTERVAL_MIN,
@@ -19,10 +18,12 @@ import {
 } from './gameConfig'
 import { ItemType } from './items'
 import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
-import { getHighscore, setHighscore } from './services/localHighscore'
+import { getHighscore } from './services/localHighscore'
 import { Hud } from './ui/Hud'
 import { ObstacleSpawner, ItemSpawner } from './systems/Spawner'
 import { checkObstacleCollision as collideObstacles, checkItemCollisions as collideItems } from './systems/CollisionSystem'
+import { startSession, submitSession } from './services/api'
+import type { SubmitSessionRequest } from './services/api'
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle
@@ -53,6 +54,12 @@ export class MainScene extends Phaser.Scene {
   private itemSpawnTimer: number = 0
   private itemSpawnInterval: number = ITEM_SPAWN_INTERVAL_MS
   private hud!: Hud
+
+  // Iteration 5: Server scoring
+  private sessionId?: string
+  private clientStartUtc?: string
+  private sessionEvents: { moves: { t: number; x: number }[]; hits: { t: number }[]; items: { t: number; id: string; type: 'POINTS' | 'LIFE' | 'SLOWMO' | 'MULTI'; x: number; y: number }[] } = { moves: [], hits: [], items: [] }
+  private moveBufferTimer: number = 0
 
   constructor() {
     super({ key: 'MainScene' })
@@ -100,7 +107,13 @@ export class MainScene extends Phaser.Scene {
 
     // Initialize game state
     this.gameStartTime = this.time.now
+    this.clientStartUtc = new Date().toISOString()
     this.isGameOver = false
+
+    // Start session
+    startSession().then(resp => {
+      this.sessionId = resp.sessionId
+    }).catch(err => console.error('Failed to start session', err))
 
     // Handle visibility change (tab switching)
     const onVisibility = () => {
@@ -180,6 +193,14 @@ export class MainScene extends Phaser.Scene {
       playerBody.setVelocityX(-MOVE_SPEED)
     } else if (this.cursors.right.isDown || this.wasdKeys.D.isDown) {
       playerBody.setVelocityX(MOVE_SPEED)
+    }
+
+    // Buffer moves every 100ms
+    this.moveBufferTimer += delta
+    if (this.moveBufferTimer >= 100) {
+      // Ensure integer milliseconds for server DTO (int)
+      this.sessionEvents.moves.push({ t: Math.round(time - this.gameStartTime), x: this.player.x })
+      this.moveBufferTimer = 0
     }
 
     // Spawn obstacles
@@ -278,6 +299,26 @@ export class MainScene extends Phaser.Scene {
 
   private handleItemCollection(item: Phaser.GameObjects.Rectangle) {
     const itemType = item.getData('itemType') as ItemType
+    const existingId = item.getData('id') as unknown
+    const itemId: string = (typeof existingId === 'string' && existingId.length > 0)
+      ? existingId
+      : (() => {
+          const id = (globalThis as any).crypto?.randomUUID
+            ? (globalThis as any).crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+          item.setData('id', id)
+          return id
+        })()
+
+    // Buffer item event
+    this.sessionEvents.items.push({
+      // Ensure integer milliseconds for server DTO (int)
+      t: Math.round(this.time.now - this.gameStartTime),
+      id: itemId,
+      type: itemType,
+      x: item.x,
+      y: item.y
+    })
     
     switch (itemType) {
       case ItemType.POINTS:
@@ -302,6 +343,10 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handleCollision() {
+    // Buffer hit event
+    // Ensure integer milliseconds for server DTO (int)
+    this.sessionEvents.hits.push({ t: Math.round(this.time.now - this.gameStartTime) })
+
     this.lives--
     this.hud.setLives(this.lives)
 
@@ -332,27 +377,23 @@ export class MainScene extends Phaser.Scene {
       }
     })
 
-    // Update highscore if current score is better
-    const currentScore = this.scoreState.score
-    const currentBest = getHighscore()
-    if (currentScore > currentBest) {
-      setHighscore(currentScore)
-      this.hud.setBest(currentScore)
-      
-      // Optional: Show "New Highscore!" message
-      const newHighscoreText = this.add.text(
-        this.cameras.main.width / 2,
-        this.cameras.main.height / 2 + 100,
-        'NEW HIGHSCORE!',
-        {
-          fontSize: '20px',
-          color: '#ffff00',
-          fontFamily: 'Arial, sans-serif',
-          resolution: 2,
-          stroke: '#000000',
-          strokeThickness: 2
+    // Submit session to server
+    if (this.sessionId && this.clientStartUtc) {
+      const payload: SubmitSessionRequest = {
+        sessionId: this.sessionId,
+        canvasWidth: this.cameras.main.width,
+        canvasHeight: this.cameras.main.height,
+        clientStartUtc: this.clientStartUtc,
+        clientEndUtc: new Date().toISOString(),
+        events: this.sessionEvents
+      }
+      submitSession(payload).then(resp => {
+        if (resp.accepted) {
+          console.log('Server score:', resp.score, 'Rank:', resp.rank)
+        } else {
+          console.log('Rejected:', resp.rejectionReason)
         }
-      ).setOrigin(0.5).setDepth(1000)
+      }).catch(err => console.error('Failed to submit session', err))
     }
   }
 
@@ -367,6 +408,13 @@ export class MainScene extends Phaser.Scene {
     this.itemSpawnTimer = 0
     this.invulnerable = false
     this.gameStartTime = this.time.now
+
+    // Reset session lifecycle for server submission
+    this.sessionEvents = { moves: [], hits: [], items: [] }
+    this.clientStartUtc = new Date().toISOString()
+    startSession().then(resp => {
+      this.sessionId = resp.sessionId
+    }).catch(err => console.error('Failed to start session', err))
 
     // Reset player
     this.player.setPosition(this.cameras.main.width / 2, this.cameras.main.height * 0.9)

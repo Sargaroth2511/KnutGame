@@ -69,6 +69,9 @@ export class ItemSpawner {
     }
 
     item.setData('itemType', randomType)
+    // Assign a unique ID for server-side validation
+    const newId = (globalThis as any).crypto?.randomUUID ? (globalThis as any).crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    item.setData('id', newId)
 
     const randomX = Phaser.Math.Between(50, this.scene.cameras.main.width - 50)
     item.setPosition(randomX, -50)
@@ -87,4 +90,3 @@ export class ItemSpawner {
     this.pool.push(item)
   }
 }
-
