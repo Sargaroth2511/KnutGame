@@ -20,6 +20,9 @@ import {
 import { ItemType } from './items'
 import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
 import { getHighscore, setHighscore } from './services/localHighscore'
+import { Hud } from './ui/Hud'
+import { ObstacleSpawner, ItemSpawner } from './systems/Spawner'
+import { checkObstacleCollision as collideObstacles, checkItemCollisions as collideItems } from './systems/CollisionSystem'
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle
@@ -30,29 +33,26 @@ export class MainScene extends Phaser.Scene {
 
   // Iteration 3 additions
   private obstacles!: Phaser.GameObjects.Group
-  private obstaclePool: Phaser.GameObjects.Rectangle[] = []
+  private obstacleSpawner!: ObstacleSpawner
   private lives: number = 3
-  private livesText!: Phaser.GameObjects.Text
-  private timerText!: Phaser.GameObjects.Text
+  // HUD-managed texts
   private gameStartTime: number = 0
   private isGameOver: boolean = false
-  private gameOverText!: Phaser.GameObjects.Text
   private restartButton!: Phaser.GameObjects.Text
   private spawnTimer: number = 0
   private spawnInterval: number = SPAWN_INTERVAL_START // Start with 2 seconds between spawns
   private invulnerable: boolean = false
   private invulnerableTimer: number = 0
   private score: number = 0
-  private scoreText!: Phaser.GameObjects.Text
+  // HUD-managed score text
 
   // Iteration 4 additions
   private scoreState = createScoreState()
   private items!: Phaser.GameObjects.Group
-  private itemPool: Phaser.GameObjects.Rectangle[] = []
+  private itemSpawner!: ItemSpawner
   private itemSpawnTimer: number = 0
   private itemSpawnInterval: number = ITEM_SPAWN_INTERVAL_MS
-  private multiplierText!: Phaser.GameObjects.Text
-  private bestText!: Phaser.GameObjects.Text
+  private hud!: Hud
 
   constructor() {
     super({ key: 'MainScene' })
@@ -86,70 +86,17 @@ export class MainScene extends Phaser.Scene {
     })
     this.fpsText.setDepth(1000) // Ensure it's always on top
 
-    // Create lives display
-    this.livesText = this.add.text(10, 40, `Lives: ${'♥'.repeat(this.lives)}`, {
-      fontSize: '18px',
-      color: '#ff0000',
-      fontFamily: 'Arial, sans-serif',
-      resolution: 2,
-      stroke: '#000000',
-      strokeThickness: 2
-    })
-    this.livesText.setDepth(1000)
+    // HUD
+    this.hud = new Hud(this)
+    this.hud.setLives(this.lives)
+    this.hud.setBest(getHighscore())
 
-    // Create timer display
-    this.timerText = this.add.text(10, 70, 'Time: 0.0s', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontFamily: 'Arial, sans-serif',
-      resolution: 2,
-      stroke: '#000000',
-      strokeThickness: 2
-    })
-    this.timerText.setDepth(1000)
+    // Spawners and groups
+    this.obstacleSpawner = new ObstacleSpawner(this)
+    this.obstacles = this.obstacleSpawner.group
 
-    // Create score display
-    this.scoreText = this.add.text(this.cameras.main.width - 10, 10, 'Score: 0', {
-      fontSize: '16px',
-      color: '#ffff00',
-      fontFamily: 'Arial, sans-serif',
-      resolution: 2,
-      stroke: '#000000',
-      strokeThickness: 2
-    })
-    this.scoreText.setOrigin(1, 0) // Right-align
-    this.scoreText.setDepth(1000)
-
-    // Create multiplier display
-    this.multiplierText = this.add.text(this.cameras.main.width - 10, 40, '', {
-      fontSize: '16px',
-      color: '#ff8800',
-      fontFamily: 'Arial, sans-serif',
-      resolution: 2,
-      stroke: '#000000',
-      strokeThickness: 2
-    })
-    this.multiplierText.setOrigin(1, 0) // Right-align
-    this.multiplierText.setDepth(1000)
-
-    // Create best score display
-    const bestScore = getHighscore()
-    this.bestText = this.add.text(this.cameras.main.width - 10, 70, `Best: ${bestScore}`, {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontFamily: 'Arial, sans-serif',
-      resolution: 2,
-      stroke: '#000000',
-      strokeThickness: 2
-    })
-    this.bestText.setOrigin(1, 0) // Right-align
-    this.bestText.setDepth(1000)
-
-    // Create obstacles group
-    this.obstacles = this.physics.add.group()
-
-    // Create items group
-    this.items = this.physics.add.group()
+    this.itemSpawner = new ItemSpawner(this)
+    this.items = this.itemSpawner.group
 
     // Initialize game state
     this.gameStartTime = this.time.now
@@ -203,19 +150,15 @@ export class MainScene extends Phaser.Scene {
 
     // Update timer
     const elapsedSeconds = (time - this.gameStartTime) / 1000
-    this.timerText.setText(`Time: ${elapsedSeconds.toFixed(1)}s`)
+    this.hud.setTimer(elapsedSeconds)
 
     // Update score using new scoring system
     this.scoreState = tickScore(this.scoreState, delta, BASE_POINTS_PER_SEC)
     this.score = this.scoreState.score
-    this.scoreText.setText(`Score: ${this.score}`)
+    this.hud.setScore(this.score)
 
     // Update multiplier display
-    if (this.scoreState.multiplier > 1) {
-      this.multiplierText.setText(`x${this.scoreState.multiplier}`)
-    } else {
-      this.multiplierText.setText('')
-    }
+    this.hud.setMultiplier(this.scoreState.multiplier)
 
     // Handle invulnerability timer
     if (this.invulnerable) {
@@ -265,8 +208,8 @@ export class MainScene extends Phaser.Scene {
     this.obstacles.children.each((obstacle) => {
       const obs = obstacle as Phaser.GameObjects.Rectangle
       const obsBody = obs.body as Phaser.Physics.Arcade.Body
-      const baseSpeed = FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN)
-      obsBody.setVelocityY(baseSpeed * slowMoFactorValue) // Apply slow motion
+      const speed = (obs.getData('speed') as number) ?? FALL_SPEED_MIN
+      obsBody.setVelocityY(speed * slowMoFactorValue) // Apply slow motion
 
       // Remove obstacles that have fallen off screen
       if (obs.y > this.cameras.main.height + 50) {
@@ -280,8 +223,8 @@ export class MainScene extends Phaser.Scene {
     this.items.children.each((item) => {
       const itm = item as Phaser.GameObjects.Rectangle
       const itmBody = itm.body as Phaser.Physics.Arcade.Body
-      const baseSpeed = FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN)
-      itmBody.setVelocityY(baseSpeed * slowMoFactorValue) // Apply slow motion
+      const speed = (itm.getData('speed') as number) ?? FALL_SPEED_MIN
+      itmBody.setVelocityY(speed * slowMoFactorValue) // Apply slow motion
 
       // Remove items that have fallen off screen
       if (itm.y > this.cameras.main.height + 50) {
@@ -309,114 +252,28 @@ export class MainScene extends Phaser.Scene {
   }
 
   private spawnObstacle() {
-    // Get obstacle from pool or create new one
-    let obstacle = this.obstaclePool.pop()
-    if (!obstacle) {
-      obstacle = this.add.rectangle(0, -50, 24, 48, 0x8B4513) // Brown rectangle for tree trunk
-      this.physics.add.existing(obstacle)
-    }
-
-    // Position randomly across the top
-    const randomX = Phaser.Math.Between(50, this.cameras.main.width - 50)
-    obstacle.setPosition(randomX, -50)
-
-    // Add to obstacles group
-    this.obstacles.add(obstacle)
-
-    // Make sure it's active and visible
-    obstacle.setActive(true)
-    obstacle.setVisible(true)
+    this.obstacleSpawner.spawn()
   }
 
   private removeObstacle(obstacle: Phaser.GameObjects.Rectangle) {
-    // Remove from obstacles group
-    this.obstacles.remove(obstacle)
-
-    // Return to pool
-    obstacle.setActive(false)
-    obstacle.setVisible(false)
-    this.obstaclePool.push(obstacle)
+    this.obstacleSpawner.remove(obstacle)
   }
 
   private checkCollisions() {
     if (this.invulnerable) return
-
-    this.obstacles.children.each((obstacle) => {
-      const obs = obstacle as Phaser.GameObjects.Rectangle
-      if (Phaser.Geom.Intersects.RectangleToRectangle(
-        this.player.getBounds(),
-        obs.getBounds()
-      )) {
-        this.handleCollision()
-        return false // Stop checking other obstacles
-      }
-      return true
-    })
+    collideObstacles(this.player, this.obstacles, () => this.handleCollision())
   }
 
   private spawnItem() {
-    // Get item from pool or create new one
-    let item = this.itemPool.pop()
-    
-    // Always assign a random item type and color
-    const itemTypes = [ItemType.POINTS, ItemType.LIFE, ItemType.SLOWMO, ItemType.MULTI]
-    const randomType = itemTypes[Math.floor(Math.random() * itemTypes.length)]
-    
-    let color: number
-    switch (randomType) {
-      case ItemType.POINTS: color = 0xffff00; break // Yellow
-      case ItemType.LIFE: color = 0xff00ff; break // Magenta
-      case ItemType.SLOWMO: color = 0x00ffff; break // Cyan
-      case ItemType.MULTI: color = 0xff8800; break // Orange
-      default: color = 0xffffff;
-    }
-    
-    if (!item) {
-      // Create new item
-      item = this.add.rectangle(0, -50, 20, 20, color)
-      this.physics.add.existing(item)
-    } else {
-      // Reuse item from pool - update its color
-      item.setFillStyle(color)
-    }
-    
-    // Store the item type in the rectangle's data
-    item.setData('itemType', randomType)
-
-    // Position randomly across the top
-    const randomX = Phaser.Math.Between(50, this.cameras.main.width - 50)
-    item.setPosition(randomX, -50)
-
-    // Add to items group
-    this.items.add(item)
-
-    // Make sure it's active and visible
-    item.setActive(true)
-    item.setVisible(true)
+    this.itemSpawner.spawn()
   }
 
   private removeItem(item: Phaser.GameObjects.Rectangle) {
-    // Remove from items group
-    this.items.remove(item)
-
-    // Return to pool
-    item.setActive(false)
-    item.setVisible(false)
-    this.itemPool.push(item)
+    this.itemSpawner.remove(item)
   }
 
   private checkItemCollisions() {
-    this.items.children.each((item) => {
-      const itm = item as Phaser.GameObjects.Rectangle
-      if (Phaser.Geom.Intersects.RectangleToRectangle(
-        this.player.getBounds(),
-        itm.getBounds()
-      )) {
-        this.handleItemCollection(itm)
-        return false // Stop checking other items
-      }
-      return true
-    })
+    collideItems(this.player, this.items, (itm) => this.handleItemCollection(itm))
   }
 
   private handleItemCollection(item: Phaser.GameObjects.Rectangle) {
@@ -429,7 +286,7 @@ export class MainScene extends Phaser.Scene {
       case ItemType.LIFE:
         if (this.lives < LIFE_MAX) {
           this.lives++
-          this.livesText.setText(`Lives: ${'♥'.repeat(this.lives)}`)
+          this.hud.setLives(this.lives)
         }
         break
       case ItemType.SLOWMO:
@@ -446,7 +303,7 @@ export class MainScene extends Phaser.Scene {
 
   private handleCollision() {
     this.lives--
-    this.livesText.setText(`Lives: ${'♥'.repeat(this.lives)}`)
+    this.hud.setLives(this.lives)
 
     // Make player invulnerable for 1 second
     this.invulnerable = true
@@ -462,45 +319,10 @@ export class MainScene extends Phaser.Scene {
     this.isGameOver = true
     this.physics.pause()
 
-    // Create game over text
-    this.gameOverText = this.add.text(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2 - 50,
-      'GAME OVER',
-      {
-        fontSize: '48px',
-        color: '#ff0000',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2,
-        stroke: '#000000',
-        strokeThickness: 4
-      }
-    )
-    this.gameOverText.setOrigin(0.5)
-    this.gameOverText.setDepth(1000)
-
-    // Create restart button
-    this.restartButton = this.add.text(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2 + 50,
-      'Click to Restart',
-      {
-        fontSize: '24px',
-        color: '#ffffff',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2,
-        stroke: '#000000',
-        strokeThickness: 2
-      }
-    )
-    this.restartButton.setOrigin(0.5)
-    this.restartButton.setDepth(1000)
-    this.restartButton.setInteractive()
-
-    // Handle restart click
-    this.restartButton.on('pointerdown', () => {
-      this.restartGame()
-    })
+    // Show Game Over via HUD and wire restart
+    const { restartButton } = this.hud.showGameOver()
+    this.restartButton = restartButton
+    this.restartButton.on('pointerdown', () => { this.restartGame() })
 
     // Also allow spacebar to restart
     const spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
@@ -515,7 +337,7 @@ export class MainScene extends Phaser.Scene {
     const currentBest = getHighscore()
     if (currentScore > currentBest) {
       setHighscore(currentScore)
-      this.bestText.setText(`Best: ${currentScore}`)
+      this.hud.setBest(currentScore)
       
       // Optional: Show "New Highscore!" message
       const newHighscoreText = this.add.text(
@@ -530,9 +352,7 @@ export class MainScene extends Phaser.Scene {
           stroke: '#000000',
           strokeThickness: 2
         }
-      )
-      newHighscoreText.setOrigin(0.5)
-      newHighscoreText.setDepth(1000)
+      ).setOrigin(0.5).setDepth(1000)
     }
   }
 
@@ -565,17 +385,12 @@ export class MainScene extends Phaser.Scene {
     })
 
     // Remove game over UI
-    if (this.gameOverText) {
-      this.gameOverText.destroy()
-    }
-    if (this.restartButton) {
-      this.restartButton.destroy()
-    }
+    this.hud.clearGameOver()
 
     // Update UI
-    this.livesText.setText(`Lives: ${'♥'.repeat(this.lives)}`)
-    this.scoreText.setText('Score: 0')
-    this.multiplierText.setText('')
+    this.hud.setLives(this.lives)
+    this.hud.setScore(0)
+    this.hud.setMultiplier(1)
 
     // Resume physics
     this.physics.resume()

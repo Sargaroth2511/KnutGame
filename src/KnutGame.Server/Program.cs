@@ -37,6 +37,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+// Enable compression early so it applies to static files too
+app.UseResponseCompression();
 
 // Serve static files (default /wwwroot)
 app.UseStaticFiles();
@@ -61,8 +63,7 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
-// Compression after static file setup is fine too
-app.UseResponseCompression();
+// (Compression already enabled above)
 
 app.UseRouting();
 app.UseAuthorization();
