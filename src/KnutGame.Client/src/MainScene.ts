@@ -1,4 +1,13 @@
 import Phaser from 'phaser'
+import {
+  MOVE_SPEED,
+  FALL_SPEED_MIN,
+  FALL_SPEED_MAX,
+  INVULNERABILITY_MS,
+  SPAWN_INTERVAL_START,
+  SPAWN_INTERVAL_MIN,
+  SPAWN_INTERVAL_DECAY
+} from './gameConfig'
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle
@@ -18,7 +27,7 @@ export class MainScene extends Phaser.Scene {
   private gameOverText!: Phaser.GameObjects.Text
   private restartButton!: Phaser.GameObjects.Text
   private spawnTimer: number = 0
-  private spawnInterval: number = 2000 // Start with 2 seconds between spawns
+  private spawnInterval: number = SPAWN_INTERVAL_START // Start with 2 seconds between spawns
   private invulnerable: boolean = false
   private invulnerableTimer: number = 0
   private score: number = 0
@@ -98,30 +107,42 @@ export class MainScene extends Phaser.Scene {
     this.isGameOver = false
 
     // Handle visibility change (tab switching)
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        this.pauseGame()
-      } else {
-        this.resumeGame()
-      }
-    })
+    const onVisibility = () => {
+      if (document.hidden) this.pauseGame(); else this.resumeGame();
+    };
+    document.addEventListener('visibilitychange', onVisibility)
 
     // Touch controls for mobile
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    const onPointerDown = (pointer: Phaser.Input.Pointer) => {
       if (pointer.x < this.cameras.main.width / 2) {
         // Left side of screen - move left
         const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-        playerBody.setVelocityX(-200)
+        playerBody.setVelocityX(-MOVE_SPEED)
       } else {
         // Right side of screen - move right
         const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-        playerBody.setVelocityX(200)
+        playerBody.setVelocityX(MOVE_SPEED)
       }
-    })
+    }
 
-    this.input.on('pointerup', () => {
+    const onPointerUp = () => {
       const playerBody = this.player.body as Phaser.Physics.Arcade.Body
       playerBody.setVelocityX(0)
+    }
+
+    this.input.on('pointerdown', onPointerDown)
+    this.input.on('pointerup', onPointerUp)
+
+    // Register cleanup on shutdown/destroy
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      this.input.off('pointerdown', onPointerDown)
+      this.input.off('pointerup', onPointerUp)
+    })
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      this.input.off('pointerdown', onPointerDown)
+      this.input.off('pointerup', onPointerUp)
     })
   }
 
@@ -156,9 +177,9 @@ export class MainScene extends Phaser.Scene {
 
     // Arrow keys or WASD movement
     if (this.cursors.left.isDown || this.wasdKeys.A.isDown) {
-      playerBody.setVelocityX(-200)
+      playerBody.setVelocityX(-MOVE_SPEED)
     } else if (this.cursors.right.isDown || this.wasdKeys.D.isDown) {
-      playerBody.setVelocityX(200)
+      playerBody.setVelocityX(MOVE_SPEED)
     }
 
     // Spawn obstacles
@@ -168,8 +189,8 @@ export class MainScene extends Phaser.Scene {
       this.spawnTimer = 0
 
       // Gradually increase difficulty (decrease spawn interval)
-      if (this.spawnInterval > 800) {
-        this.spawnInterval -= 10
+      if (this.spawnInterval > SPAWN_INTERVAL_MIN) {
+        this.spawnInterval -= SPAWN_INTERVAL_DECAY
       }
     }
 
@@ -177,7 +198,7 @@ export class MainScene extends Phaser.Scene {
     this.obstacles.children.each((obstacle) => {
       const obs = obstacle as Phaser.GameObjects.Rectangle
       const obsBody = obs.body as Phaser.Physics.Arcade.Body
-      obsBody.setVelocityY(150 + Math.random() * 100) // Variable fall speed
+      obsBody.setVelocityY(FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN)) // Variable fall speed
 
       // Remove obstacles that have fallen off screen
       if (obs.y > this.cameras.main.height + 50) {
@@ -255,7 +276,7 @@ export class MainScene extends Phaser.Scene {
 
     // Make player invulnerable for 1 second
     this.invulnerable = true
-    this.invulnerableTimer = 1000
+    this.invulnerableTimer = INVULNERABILITY_MS
     this.player.setFillStyle(0xff0000) // Red when hit
 
     if (this.lives <= 0) {
@@ -322,7 +343,7 @@ export class MainScene extends Phaser.Scene {
     this.score = 0
     this.isGameOver = false
     this.spawnTimer = 0
-    this.spawnInterval = 2000
+    this.spawnInterval = SPAWN_INTERVAL_START
     this.invulnerable = false
     this.gameStartTime = this.time.now
 

@@ -17,6 +17,7 @@ node_modules/
 # Built client manifest (prefer generating in CI)
 src/KnutGame.Server/wwwroot/game/manifest.json
 src/KnutGame.Server/wwwroot/game/.vite/
+src/KnutGame.Server/wwwroot/game/assets/
 
 # Built client manifest (prefer generating in CI)
 src/KnutGame.Server/wwwroot/game/manifest.json

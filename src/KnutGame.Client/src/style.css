@@ -71,20 +71,7 @@ canvas {
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vanilla:hover {
-  filter: drop-shadow(0 0 2em #3178c6aa);
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
-}
+/* removed unused template styles (.logo, .card, .read-the-docs) */
 
 button {
   border-radius: 8px;
