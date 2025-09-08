@@ -1,14 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import config from '../vite.config'
+import { readFileSync } from 'fs'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 describe('Vite config', () => {
   it('uses /game/ as base', () => {
-    expect((config as any).base).toBe('/game/')
+    const configContent = readFileSync(join(__dirname, '../vite.config.ts'), 'utf-8')
+    expect(configContent).toContain("base: '/game/'")
   })
 
   it('outputs to server wwwroot/game', () => {
-    const outDir = (config as any).build?.outDir
-    expect(outDir).toMatch(/KnutGame\.Server\/wwwroot\/game$/)
+    const configContent = readFileSync(join(__dirname, '../vite.config.ts'), 'utf-8')
+    expect(configContent).toContain("outDir: '../KnutGame.Server/wwwroot/game'")
   })
 })
 

@@ -1,7 +1,10 @@
 ﻿@page
+@inject KnutGame.Services.ViteManifestService Manifest
 @{
     Layout = null;
     ViewData["Title"] = "Knut Game";
+    var js = Manifest.GetJs("src/main.ts");
+    var cssFiles = Manifest.GetCss("src/main.ts");
 }
 
 <!DOCTYPE html>
@@ -10,11 +13,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"]</title>
+
+    @* Emit CSS from Vite manifest, if any *@
+    @foreach (var href in cssFiles)
+    {
+        <link rel="stylesheet" href="@href" />
+    }
 </head>
 <body>
     <div id="app"></div>
 
-    <link rel="stylesheet" href="/game/assets/main-8MPEXs9s.css">
-    <script type="module" src="/game/assets/main-Dc32h3_3.js"></script>
+    @* Emit JS entry from Vite manifest, else show a dev hint *@
+    @if (js is not null)
+    {
+        <script type="module" src="@js"></script>
+    }
+    else
+    {
+        @:<!-- No manifest found. Run `npm install && npm run build` in src/KnutGame.Client to generate /wwwroot/game/manifest.json -->
+    }
 </body>
 </html>

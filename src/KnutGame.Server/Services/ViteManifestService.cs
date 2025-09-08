@@ -29,7 +29,9 @@ public class ViteManifestService
         var path = Path.Combine(_env.WebRootPath ?? "wwwroot", "game", "manifest.json");
         if (!File.Exists(path))
         {
-            _logger.LogWarning("Vite manifest not found at {Path}. Did you run `pnpm -C src/client build`?", path);
+            _logger.LogWarning(
+                "Vite manifest not found at {Path}. Run `npm install && npm run build` in src/KnutGame.Client to generate it.",
+                path);
             return new();
         }
 

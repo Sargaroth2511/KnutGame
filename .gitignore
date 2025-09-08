@@ -14,6 +14,14 @@ obj/
 # Node modules
 node_modules/
 
+# Built client manifest (prefer generating in CI)
+src/KnutGame.Server/wwwroot/game/manifest.json
+src/KnutGame.Server/wwwroot/game/.vite/
+
+# Built client manifest (prefer generating in CI)
+src/KnutGame.Server/wwwroot/game/manifest.json
+src/KnutGame.Server/wwwroot/game/.vite/
+
 # Logs
 logs
 *.log
