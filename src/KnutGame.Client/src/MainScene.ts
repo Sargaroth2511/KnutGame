@@ -24,11 +24,13 @@ import { ObstacleSpawner, ItemSpawner } from './systems/Spawner'
 import { checkObstacleCollision as collideObstacles, checkItemCollisions as collideItems } from './systems/CollisionSystem'
 import { startSession, submitSession } from './services/api'
 import type { SubmitSessionRequest } from './services/api'
+import { drawSkyscraperBackground } from './systems/background'
+import { SessionEventsBuffer } from './systems/SessionEventsBuffer'
+import { InputController } from './systems/InputController'
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Rectangle
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
-  private wasdKeys!: { W: Phaser.Input.Keyboard.Key, A: Phaser.Input.Keyboard.Key, S: Phaser.Input.Keyboard.Key, D: Phaser.Input.Keyboard.Key }
+  private inputController?: InputController
   private fpsText!: Phaser.GameObjects.Text
   private isPaused: boolean = false
 
@@ -58,7 +60,7 @@ export class MainScene extends Phaser.Scene {
   // Iteration 5: Server scoring
   private sessionId?: string
   private clientStartUtc?: string
-  private sessionEvents: { moves: { t: number; x: number }[]; hits: { t: number }[]; items: { t: number; id: string; type: 'POINTS' | 'LIFE' | 'SLOWMO' | 'MULTI'; x: number; y: number }[] } = { moves: [], hits: [], items: [] }
+  private sessionBuffer = new SessionEventsBuffer()
   private moveBufferTimer: number = 0
 
   constructor() {
@@ -71,7 +73,7 @@ export class MainScene extends Phaser.Scene {
 
   create() {
     // Draw full-screen skyscraper background with windows
-    this.drawSkyscraperBackground()
+    drawSkyscraperBackground(this)
     // Create player as a simple rectangle (hitbox)
     const centerX = this.cameras.main.width / 2
     const playerY = this.cameras.main.height * 0.94 // stand a bit lower (closer to street)
@@ -81,8 +83,8 @@ export class MainScene extends Phaser.Scene {
     playerBody.setCollideWorldBounds(true)
 
     // Set up input
-    this.cursors = this.input.keyboard!.createCursorKeys()
-    this.wasdKeys = this.input.keyboard!.addKeys('W,S,A,D') as any
+    this.inputController = new InputController(this, this.player)
+    this.inputController.attach()
 
     // Create FPS counter
     this.fpsText = this.add.text(10, 10, 'FPS: 0', {
@@ -123,151 +125,18 @@ export class MainScene extends Phaser.Scene {
     };
     document.addEventListener('visibilitychange', onVisibility)
 
-    // Touch controls for mobile
-    const onPointerDown = (pointer: Phaser.Input.Pointer) => {
-      if (pointer.x < this.cameras.main.width / 2) {
-        // Left side of screen - move left
-        const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-        playerBody.setVelocityX(-MOVE_SPEED)
-      } else {
-        // Right side of screen - move right
-        const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-        playerBody.setVelocityX(MOVE_SPEED)
-      }
-    }
-
-    const onPointerUp = () => {
-      const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-      playerBody.setVelocityX(0)
-    }
-
-    this.input.on('pointerdown', onPointerDown)
-    this.input.on('pointerup', onPointerUp)
-
     // Register cleanup on shutdown/destroy
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       document.removeEventListener('visibilitychange', onVisibility)
-      this.input.off('pointerdown', onPointerDown)
-      this.input.off('pointerup', onPointerUp)
+      this.inputController?.detach()
     })
     this.events.once(Phaser.Scenes.Events.DESTROY, () => {
       document.removeEventListener('visibilitychange', onVisibility)
-      this.input.off('pointerdown', onPointerDown)
-      this.input.off('pointerup', onPointerUp)
+      this.inputController?.detach()
     })
   }
 
-  private drawSkyscraperBackground() {
-    const w = this.cameras.main.width
-    const h = this.cameras.main.height
-
-    const g = this.add.graphics()
-    g.setDepth(-1000)
-    // Building facade
-    const facadeColor = 0x1b1f2a // dark blue-gray
-    g.fillStyle(facadeColor, 1)
-    g.fillRect(0, 0, w, h)
-
-    // Ground elements
-    const streetHeight = 90
-    const curbHeight = 4
-    const groundFloorHeight = 140 // door & lobby area before windows start
-
-    // Window layout: aligned columns, 4 rows, bigger windows starting above ground floor
-    const marginX = 64
-    const marginY = 48
-    const windowW = 86
-    const windowH = 120
-    const rows = 4
-    const cols = 3 // three columns across
-
-    const usableW = Math.max(1, w - marginX * 2)
-    // Lift windows slightly higher above the ground floor
-    const windowLift = 24
-    const windowsTopY = Math.max(marginY, marginY + groundFloorHeight - windowLift)
-    // Ensure spacing between the lowest window row and the street
-    const bottomWindowGap = 40
-    const windowsBottomY = h - streetHeight - marginY - bottomWindowGap
-    const windowsUsableH = Math.max(1, windowsBottomY - windowsTopY)
-
-    // Slight color variations for lit/dim windows
-    const litColors = [0xffe8a3, 0xffd982, 0xfff0b8]
-    const dimColors = [0x243046, 0x2a354d, 0x222b3f]
-
-    for (let r = 0; r < rows; r++) {
-      // even spacing by center positions within window band, then convert to top-left
-      const cy = windowsTopY + (r / (rows - 1)) * windowsUsableH
-      const y = Math.round(cy - windowH / 2)
-
-      for (let c = 0; c < cols; c++) {
-        // base column center
-        let cx = marginX + (c / (cols - 1)) * usableW
-        // move outer columns inward by ~5% of board width
-        const shiftX = w * 0.05
-        if (c === 0) cx = Math.min(cx + shiftX, w - marginX - windowW / 2)
-        if (c === cols - 1) cx = Math.max(cx - shiftX, marginX + windowW / 2)
-
-        const x = Math.round(cx - windowW / 2)
-
-        // Skip the bottom-row middle window (behind the door)
-        if (r === rows - 1 && c === Math.floor(cols / 2)) {
-          continue
-        }
-
-        // Probability a window is lit (more at top floors)
-        const rowFactor = 0.3 + 0.5 * (1 - r / (rows - 1))
-        const lit = Math.random() < rowFactor
-        const arr = lit ? litColors : dimColors
-        const color = arr[Math.floor(Math.random() * arr.length)]
-
-        // Frame
-        const frameColor = 0x101521
-        g.fillStyle(frameColor, 1)
-        g.fillRect(x - 3, y - 3, windowW + 6, windowH + 6)
-
-        // Pane
-        g.fillStyle(color, 1)
-        g.fillRect(x, y, windowW, windowH)
-
-        // Mullions
-        g.fillStyle(0x0e1320, 0.35)
-        g.fillRect(x + windowW / 2 - 2, y + 6, 4, windowH - 12)
-        g.fillRect(x + 6, y + windowH / 2 - 2, windowW - 12, 4)
-      }
-    }
-
-    // Door on the ground floor (centered)
-    const doorW = 120
-    const doorH = groundFloorHeight - 16
-    const doorX = Math.round(w / 2 - doorW / 2)
-    const doorY = Math.round(h - streetHeight - doorH)
-    // Door frame
-    g.fillStyle(0x0f131e, 1)
-    g.fillRect(doorX - 6, doorY - 6, doorW + 12, doorH + 12)
-    // Door panel
-    g.fillStyle(0x3a2f28, 1)
-    g.fillRect(doorX, doorY, doorW, doorH)
-    // Door details: vertical split
-    g.fillStyle(0x261d18, 0.6)
-    g.fillRect(doorX + doorW / 2 - 2, doorY + 8, 4, doorH - 16)
-
-    // Street in front of the building (player stands on this)
-    const streetY = h - streetHeight
-    // Curb line
-    g.fillStyle(0x11151f, 1)
-    g.fillRect(0, streetY - curbHeight, w, curbHeight)
-    // Asphalt
-    g.fillStyle(0x2b2b2f, 1)
-    g.fillRect(0, streetY, w, streetHeight)
-    // Lane markings (dashed)
-    g.fillStyle(0xf0f2f5, 0.4)
-    const midY = streetY + Math.floor(streetHeight / 2) - 2
-    const dashW = 48
-    const dashGap = 28
-    for (let dx = 0; dx < w; dx += dashW + dashGap) {
-      g.fillRect(dx, midY, dashW, 4)
-    }
-  }
+  // background rendering moved to systems/background.ts
 
   update(time: number, delta: number) {
     if (this.isPaused || this.isGameOver) return
@@ -296,24 +165,13 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
-    // Handle keyboard input
-    const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-
-    // Reset velocity
-    playerBody.setVelocityX(0)
-
-    // Arrow keys or WASD movement
-    if (this.cursors.left.isDown || this.wasdKeys.A.isDown) {
-      playerBody.setVelocityX(-MOVE_SPEED)
-    } else if (this.cursors.right.isDown || this.wasdKeys.D.isDown) {
-      playerBody.setVelocityX(MOVE_SPEED)
-    }
+    // Handle input-driven movement
+    this.inputController?.update()
 
     // Buffer moves every 100ms
     this.moveBufferTimer += delta
     if (this.moveBufferTimer >= 100) {
-      // Ensure integer milliseconds for server DTO (int)
-      this.sessionEvents.moves.push({ t: Math.round(time - this.gameStartTime), x: this.player.x })
+      this.sessionBuffer.pushMove(time - this.gameStartTime, this.player.x)
       this.moveBufferTimer = 0
     }
 
@@ -425,14 +283,7 @@ export class MainScene extends Phaser.Scene {
         })()
 
     // Buffer item event
-    this.sessionEvents.items.push({
-      // Ensure integer milliseconds for server DTO (int)
-      t: Math.round(this.time.now - this.gameStartTime),
-      id: itemId,
-      type: itemType,
-      x: item.x,
-      y: item.y
-    })
+    this.sessionBuffer.pushItem(this.time.now - this.gameStartTime, itemId, itemType, item.x, item.y)
     
     switch (itemType) {
       case ItemType.POINTS:
@@ -458,8 +309,7 @@ export class MainScene extends Phaser.Scene {
 
   private handleCollision() {
     // Buffer hit event
-    // Ensure integer milliseconds for server DTO (int)
-    this.sessionEvents.hits.push({ t: Math.round(this.time.now - this.gameStartTime) })
+    this.sessionBuffer.pushHit(this.time.now - this.gameStartTime)
 
     this.lives--
     this.hud.setLives(this.lives)
@@ -499,7 +349,7 @@ export class MainScene extends Phaser.Scene {
         canvasHeight: this.cameras.main.height,
         clientStartUtc: this.clientStartUtc,
         clientEndUtc: new Date().toISOString(),
-        events: this.sessionEvents
+        events: this.sessionBuffer.snapshot()
       }
       submitSession(payload).then(resp => {
         if (resp.accepted) {
@@ -524,7 +374,7 @@ export class MainScene extends Phaser.Scene {
     this.gameStartTime = this.time.now
 
     // Reset session lifecycle for server submission
-    this.sessionEvents = { moves: [], hits: [], items: [] }
+    this.sessionBuffer.reset()
     this.clientStartUtc = new Date().toISOString()
     startSession().then(resp => {
       this.sessionId = resp.sessionId
