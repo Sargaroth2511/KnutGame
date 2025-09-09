@@ -204,10 +204,12 @@ repo/
 ## Iteration 5 – Server‑Authoritative Scoring + Anti‑Cheat + Persistence (implemented)
 **Goal:** Server computes score from client event streams and validates integrity.
 
-**API (Minimal APIs)**
-- `POST /api/session/start` → `{ sessionId, issuedUtc }`.
-- `POST /api/session/submit` → `{ accepted, rejectionReason?, score?, rank?, totalPlayers? }`.
-- `GET /api/leaderboard?top=50` → `{ entries: [{ rank, score, createdUtc }] }`.
+**API (Controllers)**
+- SessionController
+  - `POST /api/session/start` → `{ sessionId, issuedUtc }`.
+  - `POST /api/session/submit` → `{ accepted, rejectionReason?, score?, rank?, totalPlayers? }`.
+- LeaderboardController
+  - `GET /api/leaderboard?top=50` → `{ entries: [{ rank, score, createdUtc }] }`.
 
 **DTOs**
 ```csharp
@@ -241,9 +243,13 @@ public record SubmitSessionResponse(bool Accepted, string? RejectionReason, int?
 - JSON: server configured with `JsonStringEnumConverter` to accept string enums from client.
 
 **Persistence & Ranking**
-- EF Core + SQLite; `ScoreEntry` persisted with salted `ClientIpHash`.
+- EF Core + SQLite (default) with migrations; `ScoreEntry` persisted with salted `ClientIpHash`.
+- Startup runs `Database.Migrate()` to apply latest schema; dev/test fallback to `EnsureCreated()` retained for legacy DBs.
 - Ranking: `rank = 1 + count(score > current)`, `totalPlayers = total entries`.
-- Local SQLite files are ignored in VCS (.gitignore); migrations recommended for schema management.
+- Local SQLite files are ignored in VCS (.gitignore). Migrations are version-controlled.
+
+**Discoverability**
+- Swagger/OpenAPI enabled in Development. Navigate to `/swagger` to inspect and try endpoints.
 
 **Acceptance criteria (met)**
 - Valid sessions accepted and scored; invalid sessions rejected with explicit reason.

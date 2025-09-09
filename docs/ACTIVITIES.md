@@ -127,3 +127,12 @@ The project builds successfully and is ready for development and deployment. The
 ### Visuals: Skyscraper Background & Street
 - Procedural background: building facade with aligned window columns; door on ground floor; street with curb and dashed line in foreground.
 - Adjustments: removed window behind door; shifted outer columns inward; lifted windows; lowered player Y to stand on street; added bottom spacing from street to first window row; removed door knob dot.
+
+### Backend Refactor: Controllers, Migrations, Swagger
+- API surface moved from Minimal APIs to MVC Controllers for clearer separation and attribute support:
+  - `SessionController` → `POST /api/session/start`, `POST /api/session/submit`.
+  - `LeaderboardController` → `GET /api/leaderboard`.
+- Options pattern introduced: `SecurityOptions` binds `Security:IpHashSalt`.
+- EF Core: switched startup DB init to `Database.Migrate()` (with safe fallback to `EnsureCreated()` if legacy dev DB triggers `PendingModelChangesWarning`).
+- Added initial EF Core migration (`20250909_InitialCreate`) and model snapshot.
+- Swagger/OpenAPI enabled in Development: `AddSwaggerGen`, `UseSwagger`, `UseSwaggerUI` → browse `/swagger`.

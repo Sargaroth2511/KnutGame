@@ -6,11 +6,15 @@ using KnutGame.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
+using KnutGame.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Razor Pages
 builder.Services.AddRazorPages();
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 // JSON options: allow string enums (e.g., "POINTS") from client
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -46,10 +50,18 @@ builder.Services.AddScoped<IScoringEngine, ScoringEngine>();
 builder.Services.AddScoped<IAntiCheat, AntiCheatService>();
 builder.Services.AddScoped<IScoreService, ScoreService>();
 
+// Options
+builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection("Security"));
+
 
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+else
 {
     app.UseExceptionHandler("/Error");
     app.UseHsts();
@@ -89,67 +101,24 @@ app.UseAuthorization();
 
 // Razor Pages endpoints
 app.MapRazorPages();
+app.MapControllers();
 
-// Ensure database is created
+// Ensure database is migrated to latest schema
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     try
     {
-        db.Database.EnsureCreated();
+        db.Database.Migrate();
     }
-    catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("already exists"))
+    catch (InvalidOperationException ex) when (ex.Message.Contains("PendingModelChangesWarning"))
     {
-        // Ignore if table already exists (e.g., in tests)
+        // Legacy DB created via EnsureCreated detected; fall back to EnsureCreated for compatibility in dev/test
+        db.Database.EnsureCreated();
     }
 }
 
-// API endpoints
-app.MapPost("/api/session/start", (IServiceProvider services) =>
-{
-    var db = services.GetRequiredService<AppDbContext>();
-    var sessionId = Guid.NewGuid();
-    // For now, no persistence for session start, just return
-    return Results.Ok(new StartSessionResponse(sessionId, DateTimeOffset.UtcNow));
-});
-
-app.MapPost("/api/session/submit", async (SubmitSessionRequest req, HttpContext http, IServiceProvider services) =>
-{
-    var antiCheat = services.GetRequiredService<IAntiCheat>();
-    var scoring = services.GetRequiredService<IScoringEngine>();
-    var scoreSvc = services.GetRequiredService<IScoreService>();
-
-    var validation = antiCheat.Validate(req);
-    if (!validation.Ok)
-    {
-        return Results.Ok(new SubmitSessionResponse(false, validation.Reason, null, null, null));
-    }
-
-    var score = scoring.Compute(req);
-
-    // Salted IP hash
-    var salt = builder.Configuration["Security:IpHashSalt"] ?? "default-salt";
-    var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var saltedIp = salt + ip;
-    var ipHash = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(saltedIp)));
-
-        var (rank, total) = await scoreSvc.SaveAndRankAsync(req.SessionId, score, ipHash, req);
-
-    return Results.Ok(new SubmitSessionResponse(true, null, score, rank, total));
-});
-
-app.MapGet("/api/leaderboard", async (IServiceProvider services, int top = 50) =>
-{
-    var db = services.GetRequiredService<AppDbContext>();
-    var scores = await db.Scores
-        .OrderByDescending(s => s.Score)
-        .Take(top)
-        .ToListAsync();
-
-    var entries = scores.Select((s, index) => new LeaderboardEntry(index + 1, s.Score, s.CreatedUtc)).ToList();
-
-    return Results.Ok(new { entries });
-});
+// API endpoints handled by MVC controllers (see Controllers/*)
 
 app.Run();
 
