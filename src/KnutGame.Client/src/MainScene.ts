@@ -1,6 +1,5 @@
 import Phaser from 'phaser'
 import {
-  MOVE_SPEED,
   FALL_SPEED_MIN,
   INVULNERABILITY_MS,
   SPAWN_INTERVAL_START,

@@ -1,5 +1,6 @@
 ﻿@page
 @inject KnutGame.Services.ViteManifestService Manifest
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @{
     Layout = null;
     ViewData["Title"] = "Knut Game";
@@ -21,6 +22,12 @@
     }
 </head>
 <body>
+    @if (Env.IsDevelopment())
+    {
+        <div style="position:fixed; top:10px; left:10px; z-index:10001;">
+            <a href="/Docs" style="background:#ffffffdd; color:#1a1a1a; padding:6px 10px; border-radius:6px; text-decoration:none; font-weight:600;">View Docs</a>
+        </div>
+    }
     <div id="app"></div>
 
     @* Emit JS entry from Vite manifest, else show a dev hint *@
