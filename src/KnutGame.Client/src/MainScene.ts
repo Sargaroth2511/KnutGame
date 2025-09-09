@@ -13,7 +13,12 @@ import {
   LIFE_MAX,
   POINTS_ITEM_BONUS,
   ITEM_SPAWN_INTERVAL_MS,
-  ITEM_DROP_CHANCE
+  ITEM_DROP_CHANCE,
+  COIN_SPAWN_INTERVAL_MS,
+  COIN_DROP_CHANCE,
+  POWERUP_SPAWN_INTERVAL_MS,
+  POWERUP_DROP_CHANCE,
+  PLAYER_SIZE
 } from './gameConfig'
 import { ItemType } from './items'
 import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
@@ -26,12 +31,31 @@ import type { SubmitSessionRequest } from './services/api'
 import { drawSkyscraperBackground } from './systems/background'
 import { SessionEventsBuffer } from './systems/SessionEventsBuffer'
 import { InputController } from './systems/InputController'
+// Assets
+// Obstacle/Item sprites (explicit file name from user, and glob for others)
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - Vite provides the URL string for imported assets
+import treeUrl from './assets/obstacles/xmas_tree_1.png'
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+const obstacleItemPngs = import.meta.glob('./assets/obstacles/**/*.png', { eager: true, as: 'url' }) as Record<string, string>
+// Player sprite: pick first PNG under assets/players via Vite glob
+// vite will inline URLs for matching files at build time
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+const playerPngs = import.meta.glob('./assets/players/*.png', { eager: true, as: 'url' }) as Record<string, string>
+const playerUrl: string | undefined = Object.values(playerPngs)[0]
 
 export class MainScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Rectangle
+  private player!: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle
   private inputController?: InputController
   private fpsText!: Phaser.GameObjects.Text
   private isPaused: boolean = false
+  private hitFxRestorer?: Phaser.Time.TimerEvent
+  private multiBlinkTween?: Phaser.Tweens.Tween
+  // Debug: show physics hitboxes
+  private debugHitboxes: boolean = false
+  private debugGfx?: Phaser.GameObjects.Graphics
 
   // Iteration 3 additions
   private obstacles!: Phaser.GameObjects.Group
@@ -54,6 +78,9 @@ export class MainScene extends Phaser.Scene {
   private itemSpawner!: ItemSpawner
   private itemSpawnTimer: number = 0
   private itemSpawnInterval: number = ITEM_SPAWN_INTERVAL_MS
+  // Iteration 8: decoupled coin vs powerup spawn
+  private coinSpawnTimer: number = 0
+  private powerupSpawnTimer: number = 0
   private hud!: Hud
 
   // Iteration 5: Server scoring
@@ -72,17 +99,48 @@ export class MainScene extends Phaser.Scene {
   }
 
   preload() {
-    // No assets to preload yet
+    this.load.image('tree', treeUrl)
+    // Load all obstacle/item images by their base filename as key
+    for (const [path, url] of Object.entries(obstacleItemPngs)) {
+      const base = path.split('/').pop()!.replace(/\.[^/.]+$/, '')
+      if (!this.textures.exists(base)) this.load.image(base, url)
+    }
+    if (playerUrl) this.load.image('player', playerUrl)
   }
 
   create() {
     // Draw full-screen skyscraper background with windows
     drawSkyscraperBackground(this)
-    // Create player as a simple rectangle (hitbox)
+    if (!this.textures.exists('tree')) {
+      console.warn('Tree sprite not found. Ensure file exists at src/KnutGame.Client/src/assets/obstacles/xmas_tree_1.png and rebuild the client.')
+    }
+    // Create player sprite if available, else a rectangle fallback
     const centerX = this.cameras.main.width / 2
-    const playerY = this.cameras.main.height * 0.94 // stand a bit lower (closer to street)
-    this.player = this.add.rectangle(centerX, playerY, 32, 32, 0x00ff00)
-    this.physics.add.existing(this.player)
+    const playerY = this.cameras.main.height * 0.94
+    if (this.textures.exists('player')) {
+      const s = this.add.sprite(centerX, playerY, 'player')
+      s.setOrigin(0.5, 1)
+      // Scale sprite to roughly PLAYER_SIZE
+      const desired = PLAYER_SIZE
+      const base = Math.max(s.width || desired, s.height || desired)
+      const scale = desired / base
+      s.setScale(scale)
+      this.physics.add.existing(s)
+      const body = (s.body as Phaser.Physics.Arcade.Body)
+      // Align body to exact display bounds (accounts for origin and scale)
+      const b = s.getBounds()
+      const topLeftX = s.x - s.displayOriginX
+      const topLeftY = s.y - s.displayOriginY
+      const offX = b.x - topLeftX
+      const offY = b.y - topLeftY
+      body.setSize(b.width, b.height)
+      body.setOffset(offX, offY)
+      this.player = s
+    } else {
+      const r = this.add.rectangle(centerX, playerY, 64, 64, 0x00ff00)
+      this.physics.add.existing(r)
+      this.player = r
+    }
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
     playerBody.setCollideWorldBounds(true)
 
@@ -100,6 +158,14 @@ export class MainScene extends Phaser.Scene {
       strokeThickness: 2
     })
     this.fpsText.setDepth(1000) // Ensure it's always on top
+
+    // Debug graphics (hidden by default). Toggle with 'H'.
+    this.debugGfx = this.add.graphics()
+    this.debugGfx.setDepth(1200).setVisible(false)
+    this.input.keyboard!.on('keydown-H', () => {
+      this.debugHitboxes = !this.debugHitboxes
+      this.debugGfx!.setVisible(this.debugHitboxes)
+    })
 
     // HUD
     this.hud = new Hud(this)
@@ -179,13 +245,22 @@ export class MainScene extends Phaser.Scene {
 
     // Update multiplier display
     this.hud.setMultiplier(this.scoreState.multiplier)
+    // Ensure player blinks while multiplier is active
+    if (this.scoreState.multiplier > 1 && !this.multiBlinkTween) {
+      this.startMultiplierBlink()
+    } else if (this.scoreState.multiplier === 1 && this.multiBlinkTween) {
+      this.stopMultiplierBlink()
+    }
 
     // Handle invulnerability timer
     if (this.invulnerable) {
       this.invulnerableTimer -= delta
       if (this.invulnerableTimer <= 0) {
         this.invulnerable = false
-        this.player.setFillStyle(0x00ff00) // Back to normal green
+        // Restore player appearance
+        const p: any = this.player as any
+        if (typeof p.setFillStyle === 'function') p.setFillStyle(0x00ff00)
+        else if (typeof p.clearTint === 'function') p.clearTint()
       }
     }
 
@@ -214,19 +289,29 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
-    // Spawn items
+    // Spawn items (legacy combined)
     this.itemSpawnTimer += delta
     if (this.itemSpawnTimer >= this.itemSpawnInterval) {
-      if (Math.random() < ITEM_DROP_CHANCE) {
-        this.spawnItem()
-      }
+      if (Math.random() < ITEM_DROP_CHANCE) this.spawnItem()
       this.itemSpawnTimer = 0
+    }
+    // Spawn coins more frequently
+    this.coinSpawnTimer += delta
+    if (this.coinSpawnTimer >= COIN_SPAWN_INTERVAL_MS) {
+      if (Math.random() < COIN_DROP_CHANCE) this.itemSpawner.spawnCoin()
+      this.coinSpawnTimer = 0
+    }
+    // Spawn powerups less frequently
+    this.powerupSpawnTimer += delta
+    if (this.powerupSpawnTimer >= POWERUP_SPAWN_INTERVAL_MS) {
+      if (Math.random() < POWERUP_DROP_CHANCE) this.itemSpawner.spawnPowerup()
+      this.powerupSpawnTimer = 0
     }
 
     // Update obstacles (move them down)
     const slowMoFactorValue = slowMoFactor(this.scoreState, SLOWMO_FACTOR)
     this.obstacles.children.each((obstacle) => {
-      const obs = obstacle as Phaser.GameObjects.Rectangle
+      const obs = obstacle as Phaser.GameObjects.Sprite
       const obsBody = obs.body as Phaser.Physics.Arcade.Body
       const speed = (obs.getData('speed') as number) ?? FALL_SPEED_MIN
       obsBody.setVelocityY(speed * slowMoFactorValue) // Apply slow motion
@@ -257,6 +342,34 @@ export class MainScene extends Phaser.Scene {
     // Check collisions
     this.checkCollisions()
     this.checkItemCollisions()
+
+    // Draw debug hitboxes if enabled
+    if (this.debugHitboxes && this.debugGfx) {
+      this.debugGfx.clear()
+      // Player bounds (green)
+      const pAny: any = this.player as any
+      const pR = typeof pAny.getBounds === 'function' ? (pAny.getBounds() as Phaser.Geom.Rectangle) : undefined
+      if (pR) this.drawRect(this.debugGfx, pR, 0x00ff00)
+      // Obstacles (red)
+      this.obstacles.children.each((o) => {
+        const any = o as any
+        const r = typeof any.getBounds === 'function' ? (any.getBounds() as Phaser.Geom.Rectangle) : undefined
+        if (r) this.drawRect(this.debugGfx!, r, 0xff3333)
+        return true
+      })
+      // Items (yellow)
+      this.items.children.each((it) => {
+        const any = it as any
+        const r = typeof any.getBounds === 'function' ? (any.getBounds() as Phaser.Geom.Rectangle) : undefined
+        if (r) this.drawRect(this.debugGfx!, r, 0xffff00)
+        return true
+      })
+    }
+  }
+
+  private drawRect(g: Phaser.GameObjects.Graphics, r: Phaser.Geom.Rectangle, color: number) {
+    g.lineStyle(2, color, 1)
+    g.strokeRect(r.x, r.y, r.width, r.height)
   }
 
   // --- Ambient snow burst helpers ---
@@ -326,10 +439,13 @@ export class MainScene extends Phaser.Scene {
   }
 
   private spawnObstacle() {
-    this.obstacleSpawner.spawn()
+    // Difficulty grows slowly over time (up to +50% speed)
+    const elapsedSec = (this.time.now - this.gameStartTime) / 1000
+    const difficulty = 1 + Math.min(0.5, elapsedSec * 0.005)
+    this.obstacleSpawner.spawn(difficulty)
   }
 
-  private removeObstacle(obstacle: Phaser.GameObjects.Rectangle) {
+  private removeObstacle(obstacle: Phaser.GameObjects.Sprite) {
     this.obstacleSpawner.remove(obstacle)
   }
 
@@ -363,26 +479,40 @@ export class MainScene extends Phaser.Scene {
           return id
         })()
 
-    // Buffer item event
-    this.sessionBuffer.pushItem(this.time.now - this.gameStartTime, itemId, itemType, item.x, item.y)
+    // Buffer item event using player-centered pickup position for server proximity validation
+    this.sessionBuffer.pushItem(this.time.now - this.gameStartTime, itemId, itemType, this.player.x, this.player.y)
     
     switch (itemType) {
       case ItemType.POINTS:
-        this.scoreState = applyPoints(this.scoreState, POINTS_ITEM_BONUS)
+        // Apply current multiplier to coin points
+        this.scoreState = applyPoints(this.scoreState, POINTS_ITEM_BONUS * Math.max(1, this.scoreState.multiplier))
+        this.hud.pulseScore()
+        this.emitCoins(this.player.x, this.player.y)
         break
       case ItemType.LIFE:
         if (this.lives < LIFE_MAX) {
           this.lives++
           this.hud.setLives(this.lives)
+          this.hud.pulseLives()
+          this.emitHeartBalloon(this.player.x, this.player.y)
         }
         break
       case ItemType.SLOWMO:
         this.scoreState = applySlowMo(this.scoreState, SLOWMO_MS)
+        this.hud.pulseScore()
+        this.emitBreathSnowflakes(this.player.x, this.player.y)
         break
       case ItemType.MULTI:
         this.scoreState = applyMultiplier(this.scoreState, MULTIPLIER_X, MULTIPLIER_MS)
+        this.hud.pulseScore()
+        this.hud.pulseMultiplier()
+        this.startMultiplierBlink()
         break
     }
+
+    // Generic pickup aura (in item color)
+    const color = (item.getData('color') as number) ?? this.colorForItem(itemType)
+    this.playPickupAura(color)
     
     // Remove the collected item
     this.removeItem(item)
@@ -398,11 +528,179 @@ export class MainScene extends Phaser.Scene {
     // Make player invulnerable for 1 second
     this.invulnerable = true
     this.invulnerableTimer = INVULNERABILITY_MS
-    this.player.setFillStyle(0xff0000) // Red when hit
+    // Flash red: rectangle uses fill, sprite uses tint
+    const p: any = this.player as any
+    if (typeof p.setFillStyle === 'function') p.setFillStyle(0xff0000)
+    else if (typeof p.setTint === 'function') p.setTint(0xff4444)
+
+    // Visual hit feedback: brief hit-stop, camera shake, and particle burst
+    this.playHitEffects()
 
     if (this.lives <= 0) {
       this.gameOver()
     }
+  }
+
+  // --- Visual Effects ---
+  private playHitEffects() {
+    // Camera shake (light)
+    this.cameras.main.shake(150, 0.0025)
+
+    // Brief hit-stop by reducing time scale, then restore
+    if (this.hitFxRestorer) {
+      this.hitFxRestorer.remove(false)
+      this.hitFxRestorer = undefined
+    }
+    const prev = this.time.timeScale
+    this.time.timeScale = 0.85
+    this.hitFxRestorer = this.time.delayedCall(100, () => {
+      this.time.timeScale = prev
+      this.hitFxRestorer = undefined
+    })
+
+    // Particle burst near player
+    this.burstParticles(this.player.x, this.player.y)
+  }
+
+  private burstParticles(x: number, y: number, color: number = 0xffffff, count: number = Phaser.Math.Between(10, 16)) {
+    for (let i = 0; i < count; i++) {
+      const size = Phaser.Math.Between(2, 4)
+      const dot = this.add.rectangle(x, y, size, size, color, 0.95)
+      dot.setDepth(900)
+      const angle = Phaser.Math.FloatBetween(-Math.PI, 0)
+      const dist = Phaser.Math.Between(20, 60)
+      const dx = Math.cos(angle) * dist
+      const dy = Math.sin(angle) * dist
+      const duration = Phaser.Math.Between(220, 420)
+      this.tweens.add({
+        targets: dot,
+        x: x + dx,
+        y: y + dy,
+        alpha: 0,
+        duration,
+        onComplete: () => dot.destroy()
+      })
+    }
+  }
+
+  private playPickupAura(color: number) {
+    // Aura pulse: expanding ring in item color
+    const ring = this.add.circle(this.player.x, this.player.y, 24)
+    ring.setStrokeStyle(3, color, 0.9)
+    ring.setDepth(850)
+    ring.setScale(0.7)
+    this.tweens.add({ targets: ring, scale: 1.2, alpha: 0, duration: 220, onComplete: () => ring.destroy() })
+  }
+
+  private colorForItem(itemType: ItemType): number {
+    switch (itemType) {
+      case ItemType.POINTS: return 0xffff00
+      case ItemType.LIFE: return 0xff0000
+      case ItemType.SLOWMO: return 0x00ffff
+      case ItemType.MULTI: return 0xff8800
+      default: return 0xffffff
+    }
+  }
+
+  // --- Item-specific pickup animations ---
+  private emitCoins(x: number, y: number) {
+    const count = Phaser.Math.Between(6, 12)
+    for (let i = 0; i < count; i++) {
+      const coin = this.add.ellipse(x, y, 6, 6, 0xffdd33, 1)
+      coin.setDepth(900)
+      const dx = Phaser.Math.Between(-24, 24)
+      const dy = -Phaser.Math.Between(70, 120)
+      const duration = Phaser.Math.Between(420, 700)
+      this.tweens.add({
+        targets: coin,
+        x: x + dx,
+        y: y + dy,
+        alpha: 0.2,
+        duration,
+        ease: 'Quad.easeOut',
+        onComplete: () => coin.destroy()
+      })
+    }
+  }
+
+  private emitHeartBalloon(x: number, y: number) {
+    // Build a tiny heart shape using two circles + triangle in a container
+    const c = this.add.container(x, y)
+    c.setDepth(880)
+    const heartColor = 0xff0000
+    const left = this.add.circle(-4, -2, 5, heartColor)
+    const right = this.add.circle(4, -2, 5, heartColor)
+    const tri = this.add.triangle(0, 4, -8, -2, 8, -2, 0, 10, heartColor)
+    const stringLine = this.add.rectangle(0, 14, 1, 12, 0xffffff, 0.6)
+    c.add([left, right, tri, stringLine])
+
+    // Float up with slight sway
+    const upDuration = 1200
+    const targetY = y - Phaser.Math.Between(60, 90)
+    this.tweens.add({ targets: c, y: targetY, duration: upDuration, ease: 'Sine.easeOut' })
+    this.tweens.add({ targets: c, x: x + Phaser.Math.Between(-10, 10), duration: 600, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' })
+    this.tweens.add({ targets: c, alpha: 0, delay: upDuration - 200, duration: 200, onComplete: () => c.destroy() })
+    // Emit small heart sparks near the player
+    this.emitHeartSparks(x, y, heartColor)
+  }
+
+  private emitHeartSparks(x: number, y: number, color: number) {
+    const count = Phaser.Math.Between(4, 7)
+    for (let i = 0; i < count; i++) {
+      const mini = this.add.container(x, y)
+      mini.setDepth(880)
+      const l = this.add.circle(-2, -1, 2, color)
+      const r = this.add.circle(2, -1, 2, color)
+      const t = this.add.triangle(0, 1, -4, -1, 4, -1, 0, 5, color)
+      mini.add([l, r, t])
+      const dx = Phaser.Math.Between(-18, 18)
+      const dy = -Phaser.Math.Between(20, 36)
+      const duration = Phaser.Math.Between(260, 420)
+      this.tweens.add({ targets: mini, x: x + dx, y: y + dy, alpha: 0, duration, ease: 'Quad.easeOut', onComplete: () => mini.destroy() })
+    }
+  }
+
+  private emitBreathSnowflakes(x: number, y: number) {
+    const count = Phaser.Math.Between(6, 10)
+    for (let i = 0; i < count; i++) {
+      const sz = Phaser.Math.Between(2, 3)
+      const flake = this.add.rectangle(x + Phaser.Math.Between(-2, 2), y - 8, sz, sz, 0x99eeff, 0.95)
+      flake.setDepth(880)
+      const dx = Phaser.Math.Between(6, 16)
+      const dy = -Phaser.Math.Between(16, 28)
+      const duration = Phaser.Math.Between(320, 520)
+      this.tweens.add({
+        targets: flake,
+        x: flake.x + dx,
+        y: flake.y + dy,
+        alpha: 0,
+        duration,
+        ease: 'Quad.easeOut',
+        onComplete: () => flake.destroy()
+      })
+    }
+  }
+
+  private startMultiplierBlink() {
+    if (this.multiBlinkTween) return
+    this.player.setAlpha(1)
+    this.multiBlinkTween = this.tweens.add({
+      targets: this.player,
+      alpha: 0.6,
+      duration: 220,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    })
+  }
+
+  private stopMultiplierBlink() {
+    if (this.multiBlinkTween) {
+      this.multiBlinkTween.stop()
+      this.multiBlinkTween.remove()
+      this.multiBlinkTween = undefined
+    }
+    this.player.setAlpha(1)
   }
 
   private gameOver() {
@@ -435,11 +733,15 @@ export class MainScene extends Phaser.Scene {
       submitSession(payload).then(resp => {
         if (resp.accepted) {
           console.log('Server score:', resp.score, 'Rank:', resp.rank)
-          const score = resp.score ?? 0
+          // Use local score (items-only) for display to avoid mismatch while server evolves
+          const score = this.score
           const rank = resp.rank ?? 0
           const total = resp.totalPlayers ?? 0
-          const durationSec = Math.max(1, Math.round((this.time.now - this.gameStartTime) / 1000))
-          const itemsCollected = this.sessionBuffer.snapshot().items.length
+          // Only count collected yellow (POINTS) items
+          const snapshot = this.sessionBuffer.snapshot()
+          const itemsCollected = snapshot.items.filter(it => it.type === 'POINTS').length
+          // Treat 'durationSec' as the primary stat for coins collected for the summary
+          const durationSec = itemsCollected
           const euros = Math.max(0, Math.round((score / 1000) * 100) / 100)
           const q = new URLSearchParams({
             score: String(score), rank: String(rank), totalPlayers: String(total), euros: String(euros), durationSec: String(durationSec), itemsCollected: String(itemsCollected)
@@ -476,11 +778,14 @@ export class MainScene extends Phaser.Scene {
 
     // Reset player
     this.player.setPosition(this.cameras.main.width / 2, this.cameras.main.height * 0.9)
-    this.player.setFillStyle(0x00ff00)
+    const p2: any = this.player as any
+    if (typeof p2.setFillStyle === 'function') p2.setFillStyle(0x00ff00)
+    else if (typeof p2.clearTint === 'function') p2.clearTint()
+    this.stopMultiplierBlink()
 
     // Clear obstacles
     this.obstacles.children.each((obstacle) => {
-      this.removeObstacle(obstacle as Phaser.GameObjects.Rectangle)
+      this.removeObstacle(obstacle as Phaser.GameObjects.Sprite)
       return true
     })
 

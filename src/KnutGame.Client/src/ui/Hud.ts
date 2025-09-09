@@ -78,6 +78,21 @@ export class Hud {
     this.bestText.setText(`Best: ${best}`)
   }
 
+  // Subtle UI pulses for feedback
+  pulseScore() {
+    this.scene.tweens.add({ targets: this.scoreText, scale: 1.1, duration: 120, yoyo: true, ease: 'Quad.easeOut' })
+  }
+
+  pulseMultiplier() {
+    if (this.multiplierText.text) {
+      this.scene.tweens.add({ targets: this.multiplierText, scale: 1.15, duration: 140, yoyo: true, ease: 'Quad.easeOut' })
+    }
+  }
+
+  pulseLives() {
+    this.scene.tweens.add({ targets: this.livesText, scale: 1.12, duration: 120, yoyo: true, ease: 'Quad.easeOut' })
+  }
+
   showGameOver(): { restartButton: Phaser.GameObjects.Text } {
     const cam = this.scene.cameras.main
     this.gameOverText = this.scene.add.text(
