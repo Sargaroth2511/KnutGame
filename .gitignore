@@ -44,3 +44,13 @@ lerna-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# SQLite local databases (do not version control)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Explicitly ignore server dev DB file if created at content root
+src/KnutGame.Server/knutgame.db
