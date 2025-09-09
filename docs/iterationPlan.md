@@ -270,21 +270,47 @@ Note: This iteration is postponed to a later phase to prioritize AI features. We
 
 ---
 
-## Iteration 7 – AI Integration (Texts) + Personalized Greetings (in progress)
-**Goal:** After game over, server generates humorous 2–3 sentence AI message based on score.
+## Iteration 7 – AI Integration (Texts) + Personalized Greetings (implemented)
+**Goal:** Start and game‑over AI messages rendered via server‑side OpenAI, with editable prompts and graceful fallback.
 
 This iteration is prioritized now. See `agent_tasks/2025-09-09_iteration7_ai_greeting.md` for the detailed plan and milestones.
 
 Status
 - M1 COMPLETE: Options + interface + controller stub + client overlay. Static fallback in place.
-- M2 COMPLETE: OpenAI integration behind `OpenAI.Enabled` flag and editable system prompt file `prompts/ai_system_prompt_start.md`.
-- M3 NEXT: Light caching, prompt tuning, error polish, docs.
+- M2 COMPLETE: OpenAI integration behind `OpenAI.Enabled` flag and editable prompt files (start + game over).
+- M3 COMPLETE: Error polish (retry/normalization), controller tests, UX fade + responsive wreath spinner.
 
-Acceptance Criteria (Iteration 7)
+Acceptance Criteria (Iteration 7) — MET
 - Start greeting appears via `/api/greeting?kind=start` and is AI-generated when configured.
+- Game-over message appears on Game Over screen (beneath restart) using `/api/greeting/gameover` and includes score, rank, euros, and a brief stat.
 - Fallback remains friendly if AI disabled/misconfigured.
-- Prompt is editable without code changes.
+- Prompts editable without code changes (prompt files).
 - No secrets committed; local dev bootstrap is smooth (user-secrets or `appsettings.Local.json`).
+
+---
+
+## Backlog
+
+### Iteration 6 – Anti‑Cheat "Light" + Session Tokens (deferred)
+This iteration is postponed to a later phase to prioritize AI features. When we pick it up, plan to implement:
+
+- Session tokens/nonce with TTL
+  - Issue signed token (e.g., JWT) or server‑stored nonce on `POST /api/session/start`.
+  - Validate token on `POST /api/session/submit` (signature/lookup, TTL, one‑time use per session).
+
+- Rate limiting
+  - Per‑IP limits for session starts/submits via ASP.NET Core Rate Limiting middleware.
+  - Per‑session: allow only one submit.
+
+- Client integration
+  - Store token from start; send with submit (header or payload field).
+  - Friendly UX for expired/invalid token or 429 responses.
+
+- Options & observability
+  - Config knobs for TTL and limits in appsettings; masked logging for decisions (no secrets).
+
+- Tests
+  - Valid/invalid/expired token, one‑time submit enforcement, and rate‑limit cases.
 
 ---
 

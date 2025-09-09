@@ -24,6 +24,9 @@ This document describes the current server API, how to explore it via Swagger in
   - GET `/api/greeting?kind=start`
     - Response (200): `{ title: string, message: string }`
     - Behavior: returns AI-generated greeting when OpenAI is configured; otherwise returns a static friendly fallback.
+  - GET `/api/greeting/gameover?score=123&rank=2&totalPlayers=10&euros=1.23&durationSec=78&itemsCollected=4`
+    - Response (200): `{ title: string, message: string }`
+    - Behavior: generates a celebratory summary referencing score, rank, donation euros, and a brief stat (duration/items). Falls back to a concise static message when disabled.
 
 ## DTOs (C#)
 ```csharp
@@ -55,6 +58,9 @@ public record SubmitSessionResponse(bool Accepted, string? RejectionReason, int?
 
 ## Configuration (OpenAI)
 - Options: `OpenAI.Enabled`, `OpenAI.ApiKey`, `OpenAI.Organization?`, `OpenAI.Model`, `OpenAI.SystemPromptPath`, `OpenAI.Temperature`, `OpenAI.MaxTokens`.
+- Prompts:
+  - Start greeting: `prompts/ai_system_prompt_start.md` (variety guidance + examples).
+  - Game over: `prompts/ai_system_prompt_gameover.md` (score/rank/euros/stat guidance + examples).
 - Secrets precedence (highest first):
   1. Environment variables (e.g., `OpenAI__ApiKey`),
   2. appsettings.{Environment}.Local.json (ignored by git),

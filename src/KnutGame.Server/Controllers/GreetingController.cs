@@ -22,5 +22,12 @@ public class GreetingController : ControllerBase
         var (title, message) = await _ki.GetGreetingAsync(kind, ct);
         return Ok(new { title, message });
     }
-}
 
+    [HttpGet("gameover")]
+    [AllowAnonymous]
+    public async Task<ActionResult<object>> Gameover([FromQuery] int score, [FromQuery] int rank, [FromQuery] int totalPlayers, [FromQuery] double euros, [FromQuery] int durationSec, [FromQuery] int itemsCollected, CancellationToken ct = default)
+    {
+        var (title, message) = await _ki.GetGameoverAsync(score, rank, totalPlayers, euros, durationSec, itemsCollected, ct);
+        return Ok(new { title, message });
+    }
+}

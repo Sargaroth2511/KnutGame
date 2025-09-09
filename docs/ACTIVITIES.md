@@ -162,6 +162,15 @@ The project builds successfully and is ready for development and deployment. The
   - Optional `OpenAI-Organization` header support.
   - Startup masked diagnostics log: environment, Enabled flag, and masked ApiKey presence.
 
+### Iteration 7: Completion (M3)
+- Added game-over AI endpoint: `GET /api/greeting/gameover` with score, rank, players, euros, durationSec, itemsCollected.
+- Client displays AI game‑over message beneath the restart button on the Game Over screen.
+- Prompt files:
+  - Start: `prompts/ai_system_prompt_start.md` (updated for variety + examples).
+  - Game over: `prompts/ai_system_prompt_gameover.md`.
+- Controller tests for Greeting endpoints (stubbed service).
+- Wreath spinner (transparent center, red berries) positioned at greeting area; fade‑out → greeting fade‑in.
+
 ### Configuration & Secrets (Dev Best Practices)
 - Added configuration sources to auto-load local, untracked files and user-secrets for all environments:
   - `appsettings.Local.json`, `appsettings.{Environment}.Local.json` (ignored by git).

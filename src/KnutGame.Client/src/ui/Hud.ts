@@ -10,10 +10,18 @@ export class Hud {
 
   private gameOverText?: Phaser.GameObjects.Text
   private restartButton?: Phaser.GameObjects.Text
+  private gameOverMsgTitle?: Phaser.GameObjects.Text
+  private gameOverMsgText?: Phaser.GameObjects.Text
+  private gameOverMsgBg?: Phaser.GameObjects.Rectangle
   private greetingBg?: Phaser.GameObjects.Rectangle
   private greetingTitle?: Phaser.GameObjects.Text
   private greetingMsg?: Phaser.GameObjects.Text
   private greetingClose?: Phaser.GameObjects.Text
+  private snowTweens: Phaser.Tweens.Tween[] = []
+  private snowDots: Phaser.GameObjects.Rectangle[] = []
+  // Loading: wreath spinner
+  private loadingSpinnerGroup?: Phaser.GameObjects.Container
+  private loadingSpinnerTween?: Phaser.Tweens.Tween
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene
@@ -99,6 +107,36 @@ export class Hud {
   clearGameOver() {
     this.gameOverText?.destroy(); this.gameOverText = undefined
     this.restartButton?.destroy(); this.restartButton = undefined
+    this.gameOverMsgTitle?.destroy(); this.gameOverMsgTitle = undefined
+    this.gameOverMsgText?.destroy(); this.gameOverMsgText = undefined
+    this.gameOverMsgBg?.destroy(); this.gameOverMsgBg = undefined
+  }
+
+  showGameOverMessage(title: string, message: string) {
+    const cam = this.scene.cameras.main
+    const padding = 16
+    const width = Math.min(520, cam.width - 40)
+    const yBase = cam.height / 2 + 90
+    const cardY = yBase + 60
+
+    // Background card (white with border)
+    this.gameOverMsgBg = this.scene.add.rectangle(cam.width / 2, cardY, width, 120, 0xffffff, 0.92)
+      .setStrokeStyle(2, 0x222222)
+      .setDepth(1000)
+
+    // Title and message (dark text for readability on white)
+    this.gameOverMsgTitle = this.scene.add.text(cam.width / 2, yBase + 20, title, {
+      fontSize: '20px', color: '#111111', fontFamily: 'Arial, sans-serif', resolution: 2
+    }).setOrigin(0.5, 0).setDepth(1001)
+    this.gameOverMsgText = this.scene.add.text(cam.width / 2, yBase + 48, message, {
+      fontSize: '16px', color: '#333333', fontFamily: 'Arial, sans-serif', wordWrap: { width: width - padding * 2 }, resolution: 2
+    }).setOrigin(0.5, 0).setDepth(1001)
+
+    // Fade in card and text
+    this.gameOverMsgBg.setAlpha(0)
+    this.gameOverMsgTitle.setAlpha(0)
+    this.gameOverMsgText.setAlpha(0)
+    this.scene.tweens.add({ targets: [this.gameOverMsgBg, this.gameOverMsgTitle, this.gameOverMsgText], alpha: 1, duration: 180 })
   }
 
   showGreeting(title: string, message: string, onClose?: () => void) {
@@ -125,6 +163,13 @@ export class Hud {
     }).setOrigin(0.5, 0).setDepth(1001).setInteractive()
 
     this.greetingClose.on('pointerdown', () => { this.clearGreeting(); onClose?.() })
+
+    // Fade in greeting elements
+    this.greetingBg.setAlpha(0)
+    this.greetingTitle.setAlpha(0)
+    this.greetingMsg.setAlpha(0)
+    this.greetingClose.setAlpha(0)
+    this.scene.tweens.add({ targets: [this.greetingBg, this.greetingTitle, this.greetingMsg, this.greetingClose], alpha: 1, duration: 180 })
   }
 
   clearGreeting() {
@@ -132,5 +177,98 @@ export class Hud {
     this.greetingTitle?.destroy(); this.greetingTitle = undefined
     this.greetingMsg?.destroy(); this.greetingMsg = undefined
     this.greetingClose?.destroy(); this.greetingClose = undefined
+  }
+
+  showLoadingSnow() {
+    const cam = this.scene.cameras.main
+    const count = 60
+    const createDot = () => {
+      const x = Phaser.Math.Between(0, cam.width)
+      const y = Phaser.Math.Between(-cam.height, 0)
+      const size = Phaser.Math.Between(2, 4)
+      const dot = this.scene.add.rectangle(x, y, size, size, 0xffffff, 0.9)
+      dot.setDepth(999)
+      const duration = Phaser.Math.Between(3500, 8000)
+      const tween = this.scene.tweens.add({
+        targets: dot,
+        y: cam.height + 10,
+        x: x + Phaser.Math.Between(-40, 40),
+        duration,
+        repeat: -1,
+        onRepeat: () => {
+          dot.y = -10
+          dot.x = Phaser.Math.Between(0, cam.width)
+        }
+      })
+      this.snowDots.push(dot)
+      this.snowTweens.push(tween)
+    }
+    for (let i = 0; i < count; i++) createDot()
+  }
+
+  clearLoadingSnow() {
+    this.snowTweens.forEach(t => t.stop());
+    this.snowTweens = []
+    this.snowDots.forEach(d => d.destroy());
+    this.snowDots = []
+  }
+
+  // --- Loading Wreath Spinner ---
+  showLoadingWreathSpinner() {
+    const cam = this.scene.cameras.main
+    // Place spinner where the greeting card appears later
+    const yBase = 80
+    const group = this.scene.add.container(cam.width / 2, yBase + 80)
+    group.setDepth(1002)
+
+    const g = this.scene.add.graphics()
+    g.setDepth(1002)
+    // Responsive size: ~4% of width, clamped
+    const outerR = Phaser.Math.Clamp(Math.round(cam.width * 0.04), 18, 34)
+    const innerR = Math.round(outerR * 0.6)
+    // Draw ring as thick stroke (transparent center)
+    const thickness = outerR - innerR
+    const radius = innerR + thickness / 2
+    g.lineStyle(thickness, 0x1b7c36, 1)
+    g.strokeCircle(0, 0, radius)
+    group.add(g)
+
+    // Red berries around the ring
+    const berryCount = 6
+    for (let i = 0; i < berryCount; i++) {
+      const angle = (i / berryCount) * Math.PI * 2
+      const r = (outerR + innerR) / 2
+      const x = Math.cos(angle) * r
+      const y = Math.sin(angle) * r
+      const berry = this.scene.add.ellipse(x, y, 5, 5, 0xe24b4b, 1)
+      berry.setDepth(1003)
+      group.add(berry)
+    }
+
+    // Rotation tween
+    this.loadingSpinnerTween = this.scene.tweens.add({
+      targets: group,
+      angle: 360,
+      duration: 2400,
+      repeat: -1,
+      ease: 'Linear'
+    })
+
+    this.loadingSpinnerGroup = group
+  }
+
+  clearLoadingSpinner() {
+    if (this.loadingSpinnerTween) { this.loadingSpinnerTween.stop(); this.loadingSpinnerTween = undefined }
+    this.loadingSpinnerGroup?.destroy(); this.loadingSpinnerGroup = undefined
+  }
+
+  fadeOutLoadingSpinner(onDone: () => void) {
+    if (!this.loadingSpinnerGroup) { onDone(); return }
+    this.scene.tweens.add({
+      targets: this.loadingSpinnerGroup,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => { this.clearLoadingSpinner(); onDone() }
+    })
   }
 }

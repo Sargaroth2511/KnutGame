@@ -7,6 +7,7 @@ public class OpenAiOptions
     public string? Organization { get; set; }
     public string Model { get; set; } = "gpt-4o-mini";
     public string SystemPromptPath { get; set; } = "prompts/ai_system_prompt_start.md";
-    public double Temperature { get; set; } = 0.6;
+    public string SystemPromptPathGameover { get; set; } = "prompts/ai_system_prompt_gameover.md";
+    public double Temperature { get; set; } = 0.8;
     public int MaxTokens { get; set; } = 200;
 }

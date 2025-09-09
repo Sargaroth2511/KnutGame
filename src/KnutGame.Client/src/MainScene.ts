@@ -61,6 +61,11 @@ export class MainScene extends Phaser.Scene {
   private clientStartUtc?: string
   private sessionBuffer = new SessionEventsBuffer()
   private moveBufferTimer: number = 0
+  // Ambient snow bursts during gameplay
+  private snowDots: Phaser.GameObjects.Rectangle[] = []
+  private snowTweens: Phaser.Tweens.Tween[] = []
+  private snowBurstTimeLeft: number = 0
+  private snowBurstCooldown: number = 0
 
   constructor() {
     super({ key: 'MainScene' })
@@ -100,12 +105,22 @@ export class MainScene extends Phaser.Scene {
     this.hud = new Hud(this)
     this.hud.setLives(this.lives)
     this.hud.setBest(getHighscore())
-    // Pause game until player starts from the greeting overlay
+    // Pause game and show snowfall until the greeting is loaded
     this.pauseGame()
+    // Show only spinner (no snow) before the game starts
+    this.hud.showLoadingWreathSpinner()
     fetch('/api/greeting?kind=start')
       .then(r => r.ok ? r.json() : { title: 'Welcome!', message: 'Have fun!' })
-      .then((g) => this.hud.showGreeting(g.title ?? 'Welcome!', g.message ?? 'Have fun!', () => this.resumeGame()))
-      .catch(() => this.hud.showGreeting('Welcome!', 'Have fun!', () => this.resumeGame()))
+      .then((g) => {
+        this.hud.fadeOutLoadingSpinner(() => {
+          this.hud.showGreeting(g.title ?? 'Welcome!', g.message ?? 'Have fun!', () => this.resumeGame())
+        })
+      })
+      .catch(() => {
+        this.hud.fadeOutLoadingSpinner(() => {
+          this.hud.showGreeting('Welcome!', 'Have fun!', () => this.resumeGame())
+        })
+      })
 
     // Spawners and groups
     this.obstacleSpawner = new ObstacleSpawner(this)
@@ -123,6 +138,9 @@ export class MainScene extends Phaser.Scene {
     startSession().then(resp => {
       this.sessionId = resp.sessionId
     }).catch(err => console.error('Failed to start session', err))
+
+    // Schedule first ambient snow burst sometime soon
+    this.snowBurstCooldown = Phaser.Math.Between(15000, 30000)
 
     // Handle visibility change (tab switching)
     const onVisibility = () => {
@@ -144,6 +162,7 @@ export class MainScene extends Phaser.Scene {
   // background rendering moved to systems/background.ts
 
   update(time: number, delta: number) {
+    // Spinner rotation uses tweens; no per-frame tick needed
     if (this.isPaused || this.isGameOver) return
 
     // Update FPS counter
@@ -172,6 +191,9 @@ export class MainScene extends Phaser.Scene {
 
     // Handle input-driven movement
     this.inputController?.update()
+
+    // Update ambient snow bursts
+    this.updateSnowBurst(delta)
 
     // Buffer moves every 100ms
     this.moveBufferTimer += delta
@@ -235,6 +257,60 @@ export class MainScene extends Phaser.Scene {
     // Check collisions
     this.checkCollisions()
     this.checkItemCollisions()
+  }
+
+  // --- Ambient snow burst helpers ---
+  private startSnowBurst() {
+    const cam = this.cameras.main
+    const count = Phaser.Math.Between(40, 80)
+    for (let i = 0; i < count; i++) {
+      const x = Phaser.Math.Between(0, cam.width)
+      const y = Phaser.Math.Between(-cam.height, 0)
+      const size = Phaser.Math.Between(2, 4)
+      const dot = this.add.rectangle(x, y, size, size, 0xffffff, 0.9)
+      dot.setDepth(-500) // behind gameplay but above background
+      const duration = Phaser.Math.Between(4000, 9000)
+      const tween = this.tweens.add({
+        targets: dot,
+        y: cam.height + 10,
+        x: x + Phaser.Math.Between(-60, 60),
+        duration,
+        repeat: -1,
+        onRepeat: () => {
+          dot.y = -10
+          dot.x = Phaser.Math.Between(0, cam.width)
+        }
+      })
+      this.snowDots.push(dot)
+      this.snowTweens.push(tween)
+    }
+    // Snow burst alive for ~6–10s
+    this.snowBurstTimeLeft = Phaser.Math.Between(6000, 10000)
+  }
+
+  private stopSnowBurst() {
+    this.snowTweens.forEach(t => t.stop())
+    this.snowTweens = []
+    this.snowDots.forEach(d => d.destroy())
+    this.snowDots = []
+    // Next burst in 20–40s
+    this.snowBurstCooldown = Phaser.Math.Between(20000, 40000)
+  }
+
+  private updateSnowBurst(delta: number) {
+    // Skip when game paused or over
+    if (this.isPaused || this.isGameOver) return
+    if (this.snowBurstTimeLeft > 0) {
+      this.snowBurstTimeLeft -= delta
+      if (this.snowBurstTimeLeft <= 0) {
+        this.stopSnowBurst()
+      }
+    } else {
+      this.snowBurstCooldown -= delta
+      if (this.snowBurstCooldown <= 0) {
+        this.startSnowBurst()
+      }
+    }
   }
 
   private pauseGame() {
@@ -359,6 +435,19 @@ export class MainScene extends Phaser.Scene {
       submitSession(payload).then(resp => {
         if (resp.accepted) {
           console.log('Server score:', resp.score, 'Rank:', resp.rank)
+          const score = resp.score ?? 0
+          const rank = resp.rank ?? 0
+          const total = resp.totalPlayers ?? 0
+          const durationSec = Math.max(1, Math.round((this.time.now - this.gameStartTime) / 1000))
+          const itemsCollected = this.sessionBuffer.snapshot().items.length
+          const euros = Math.max(0, Math.round((score / 1000) * 100) / 100)
+          const q = new URLSearchParams({
+            score: String(score), rank: String(rank), totalPlayers: String(total), euros: String(euros), durationSec: String(durationSec), itemsCollected: String(itemsCollected)
+          })
+          fetch(`/api/greeting/gameover?${q.toString()}`)
+            .then(r => r.ok ? r.json() : { title: 'Well played', message: `Score ${score}, rank ${rank}/${total}, €${euros.toFixed(2)} for good.` })
+            .then(g => this.hud.showGameOverMessage(g.title ?? 'Well played', g.message ?? `Score ${score}, rank ${rank}/${total}, €${euros.toFixed(2)} for good.`))
+            .catch(() => this.hud.showGameOverMessage('Well played', `Score ${score}, rank ${rank}/${total}, €${euros.toFixed(2)} for good.`))
         } else {
           console.log('Rejected:', resp.rejectionReason)
         }
