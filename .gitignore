@@ -45,6 +45,10 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
+# Local-only settings (do not commit secrets)
+src/KnutGame.Server/appsettings.Local.json
+src/KnutGame.Server/appsettings.*.Local.json
+
 # SQLite local databases (do not version control)
 *.db
 *.db-wal

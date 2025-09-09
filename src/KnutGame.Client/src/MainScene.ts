@@ -100,6 +100,12 @@ export class MainScene extends Phaser.Scene {
     this.hud = new Hud(this)
     this.hud.setLives(this.lives)
     this.hud.setBest(getHighscore())
+    // Pause game until player starts from the greeting overlay
+    this.pauseGame()
+    fetch('/api/greeting?kind=start')
+      .then(r => r.ok ? r.json() : { title: 'Welcome!', message: 'Have fun!' })
+      .then((g) => this.hud.showGreeting(g.title ?? 'Welcome!', g.message ?? 'Have fun!', () => this.resumeGame()))
+      .catch(() => this.hud.showGreeting('Welcome!', 'Have fun!', () => this.resumeGame()))
 
     // Spawners and groups
     this.obstacleSpawner = new ObstacleSpawner(this)

@@ -136,3 +136,35 @@ The project builds successfully and is ready for development and deployment. The
 - EF Core: switched startup DB init to `Database.Migrate()` (with safe fallback to `EnsureCreated()` if legacy dev DB triggers `PendingModelChangesWarning`).
 - Added initial EF Core migration (`20250909_InitialCreate`) and model snapshot.
 - Swagger/OpenAPI enabled in Development: `AddSwaggerGen`, `UseSwagger`, `UseSwaggerUI` → browse `/swagger`.
+
+### MainScene Refactor & Background
+- Extracted responsibilities into modules (SOLID):
+  - `systems/background.ts` — procedural skyscraper + street rendering.
+  - `systems/InputController.ts` — keyboard/touch input, attach/detach lifecycle.
+  - `systems/SessionEventsBuffer.ts` — moves/hits/items buffering with ms rounding.
+- `MainScene` now orchestrates lifecycle and delegates to modules.
+- Visual polish: aligned window columns, removed window behind the door, inward shifts, window elevation, street and door.
+
+### Docs Viewer (Dev)
+- Added `Pages/Docs.cshtml` to browse repository `.md` files from `docs/` and `agent_tasks/` with a Dev-only "View Docs" link on the game page.
+- Markdown rendering with Markdig; clean white styling and support for downloading files.
+- Resolves paths relative to the repository root; prevents traversal outside allowed folders.
+
+### Iteration 7: AI Greetings (M1 + M2)
+- M1: Infrastructure and stub service
+  - `OpenAiOptions` (Enabled, ApiKey, Organization?, Model, SystemPromptPath, Temperature, MaxTokens).
+  - `IKiTextService` with `StaticKiTextService` fallback.
+  - `GreetingController` → `GET /api/greeting?kind=start`.
+  - Client: greeting overlay via `Hud.showGreeting()`; game starts on "Start Game" press.
+- M2: OpenAI integration
+  - `OpenAiTextService` calling Chat Completions; reads prompt from `prompts/ai_system_prompt_start.md`.
+  - Robust fallback to static message on failures.
+  - Optional `OpenAI-Organization` header support.
+  - Startup masked diagnostics log: environment, Enabled flag, and masked ApiKey presence.
+
+### Configuration & Secrets (Dev Best Practices)
+- Added configuration sources to auto-load local, untracked files and user-secrets for all environments:
+  - `appsettings.Local.json`, `appsettings.{Environment}.Local.json` (ignored by git).
+  - `.NET` user-secrets (always loaded) — added `UserSecretsId` to the server project.
+- Implemented `${VARNAME}` placeholder expansion and fallback to `OPENAI_API_KEY` for OpenAI options.
+- Documentation updates: `docs/API.md` (Greeting endpoint), `docs/CONFIG.md` (secrets & precedence).

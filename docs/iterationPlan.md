@@ -258,7 +258,7 @@ public record SubmitSessionResponse(bool Accepted, string? RejectionReason, int?
 
 ---
 
-## Iteration 6 – Anti-Cheat "Light" + Session Tokens
+## Iteration 6 – Anti-Cheat "Light" + Session Tokens (deferred)
 **Goal:** Minimal barrier to trivial cheating, without breaking UX.
 
 **Tasks**
@@ -266,23 +266,25 @@ public record SubmitSessionResponse(bool Accepted, string? RejectionReason, int?
 2. **Client**: fetch session before run; on submit, send raw score/duration/items. (No secret on client).
 3. **Server vetting**: rate limits per IP/session, max score/sec, min duration.
 
-**Acceptance criteria**
-- Obvious fakes (e.g. Score 1e9, Duration 1s) rejected.
-- Normal runs accepted; UX smooth.
+Note: This iteration is postponed to a later phase to prioritize AI features. We will revisit after Iteration 8.
 
 ---
 
-## Iteration 7 – AI Integration (Texts) + Personalized Greetings
+## Iteration 7 – AI Integration (Texts) + Personalized Greetings (in progress)
 **Goal:** After game over, server generates humorous 2–3 sentence AI message based on score.
 
-**Tasks**
-1. **Service** `KiTextService`: template + rules (offline/static or configurable LLM API). Cache per score bucket.
-2. **Endpoint** `GET /api/greeting?score=...` → `{ title, message }`.
-3. **Client**: show text in game over dialog; copy button.
+This iteration is prioritized now. See `agent_tasks/2025-09-09_iteration7_ai_greeting.md` for the detailed plan and milestones.
 
-**Acceptance criteria**
-- Different score buckets → different themed texts.
-- Fallback present if AI service unavailable.
+Status
+- M1 COMPLETE: Options + interface + controller stub + client overlay. Static fallback in place.
+- M2 COMPLETE: OpenAI integration behind `OpenAI.Enabled` flag and editable system prompt file `prompts/ai_system_prompt_start.md`.
+- M3 NEXT: Light caching, prompt tuning, error polish, docs.
+
+Acceptance Criteria (Iteration 7)
+- Start greeting appears via `/api/greeting?kind=start` and is AI-generated when configured.
+- Fallback remains friendly if AI disabled/misconfigured.
+- Prompt is editable without code changes.
+- No secrets committed; local dev bootstrap is smooth (user-secrets or `appsettings.Local.json`).
 
 ---
 

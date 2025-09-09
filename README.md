@@ -42,14 +42,18 @@ KnutGame/
 - Object pooling to prevent memory leaks
 - Invulnerability frames after collision
 
-### 🚧 Next: Iteration 4 - Items & Scoring + Local Highscore
+**Iteration 4: Items & Scoring + Local Highscore**
+- Items (POINTS, LIFE, SLOWMO, MULTI), scoring state, multiplier windows.
+- Local highscore persisted/displayed.
 
-**Planned Features:**
-- Falling Christmas trees as obstacles
-- Collision detection system
-- Lives system and game over mechanics
-- Progressive difficulty with spawn rate increases
-- Score tracking and display
+**Iteration 5: Server API + Persistence**
+- MVC Controllers; EF Core + SQLite with migrations; leaderboard; salted IP hashing.
+
+**Iteration 6: Anti-Cheat "Light" + Session Tokens** (Deferred)
+
+**Iteration 7: AI Greetings (Start Overlay)**
+- Greeting endpoint `/api/greeting?kind=start`; OpenAI-backed (configurable) with editable prompt.
+- Client shows start overlay; game begins on "Start Game".
 
 ## Tech Stack
 
@@ -92,7 +96,17 @@ KnutGame/
    dotnet run
    ```
 
-   Server will start on `https://localhost:7104` (or configured port)
+   Server logs show environment and masked OpenAI config.
+   Open `http://localhost:5104` (or your configured port).
+
+### Useful Dev Endpoints
+- Swagger (Development only): `GET /swagger`
+- Docs viewer (Development only): `GET /Docs` — browse & download `.md` docs
+
+### AI Greeting (Iteration 7)
+- Endpoint: `GET /api/greeting?kind=start` → `{ title, message }`
+- Client fetches on load; overlay closes with "Start Game".
+- Config & secrets: see `docs/CONFIG.md`. Prompt file: `prompts/ai_system_prompt_start.md`.
 
 ## Tests
 
@@ -128,6 +142,9 @@ KnutGame/
 - Client builds to `src/KnutGame.Server/wwwroot/game/`
 - ASP.NET Core serves static assets and Razor Pages
 - Production build optimized for performance
+
+### Database
+- EF Core migrations are applied on startup. SQLite DB files are git-ignored; migrations are version-controlled.
 
 ## Project Goals
 

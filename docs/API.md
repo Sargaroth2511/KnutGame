@@ -20,6 +20,11 @@ This document describes the current server API, how to explore it via Swagger in
   - GET `/api/leaderboard?top=50`
     - Response: `{ entries: [{ rank: number, score: number, createdUtc: string }] }`
 
+- GreetingController
+  - GET `/api/greeting?kind=start`
+    - Response (200): `{ title: string, message: string }`
+    - Behavior: returns AI-generated greeting when OpenAI is configured; otherwise returns a static friendly fallback.
+
 ## DTOs (C#)
 ```csharp
 public record MoveEvent(int t, float x);
@@ -48,3 +53,18 @@ public record SubmitSessionResponse(bool Accepted, string? RejectionReason, int?
 - Authentication/authorization: Controllers are annotated with `[AllowAnonymous]` for now; switch to `[Authorize]` as needed.
 - Health checks: Not currently mapped; can be added (`/health/live`, `/health/ready`) when needed.
 
+## Configuration (OpenAI)
+- Options: `OpenAI.Enabled`, `OpenAI.ApiKey`, `OpenAI.Organization?`, `OpenAI.Model`, `OpenAI.SystemPromptPath`, `OpenAI.Temperature`, `OpenAI.MaxTokens`.
+- Secrets precedence (highest first):
+  1. Environment variables (e.g., `OpenAI__ApiKey`),
+  2. appsettings.{Environment}.Local.json (ignored by git),
+  3. appsettings.Local.json (ignored by git),
+  4. User-secrets (always loaded),
+  5. appsettings.{Environment}.json,
+  6. appsettings.json.
+- Placeholders: `${VARNAME}` in appsettings are expanded; fallback reads `OPENAI_API_KEY` if unresolved.
+- Prompt: read from `prompts/ai_system_prompt_start.md` (editable without code changes).
+
+## Docs Viewer (Dev)
+- Dev-only link on the game page opens `/Docs` to browse Markdown files under `docs/` and `agent_tasks/`.
+- Supports download and clean HTML rendering (Markdig). Prevents path traversal outside allowed roots.

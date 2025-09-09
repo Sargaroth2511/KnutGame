@@ -10,6 +10,10 @@ export class Hud {
 
   private gameOverText?: Phaser.GameObjects.Text
   private restartButton?: Phaser.GameObjects.Text
+  private greetingBg?: Phaser.GameObjects.Rectangle
+  private greetingTitle?: Phaser.GameObjects.Text
+  private greetingMsg?: Phaser.GameObjects.Text
+  private greetingClose?: Phaser.GameObjects.Text
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene
@@ -96,5 +100,37 @@ export class Hud {
     this.gameOverText?.destroy(); this.gameOverText = undefined
     this.restartButton?.destroy(); this.restartButton = undefined
   }
-}
 
+  showGreeting(title: string, message: string, onClose?: () => void) {
+    const cam = this.scene.cameras.main
+    const padding = 16
+    const width = Math.min(520, cam.width - 40)
+    const x = cam.width / 2 - width / 2
+    const y = 80
+
+    this.greetingBg = this.scene.add.rectangle(cam.width / 2, y + 80, width, 160, 0xffffff, 0.92)
+      .setStrokeStyle(2, 0x222222)
+      .setDepth(1000)
+
+    this.greetingTitle = this.scene.add.text(cam.width / 2, y + 20, title, {
+      fontSize: '20px', color: '#111111', fontFamily: 'Arial, sans-serif', resolution: 2
+    }).setOrigin(0.5, 0).setDepth(1001)
+
+    this.greetingMsg = this.scene.add.text(cam.width / 2, y + 50, message, {
+      fontSize: '16px', color: '#333333', fontFamily: 'Arial, sans-serif', wordWrap: { width: width - padding * 2 }, resolution: 2
+    }).setOrigin(0.5, 0).setDepth(1001)
+
+    this.greetingClose = this.scene.add.text(cam.width / 2, y + 110, 'Start Game', {
+      fontSize: '14px', color: '#2563eb', fontFamily: 'Arial, sans-serif', resolution: 2
+    }).setOrigin(0.5, 0).setDepth(1001).setInteractive()
+
+    this.greetingClose.on('pointerdown', () => { this.clearGreeting(); onClose?.() })
+  }
+
+  clearGreeting() {
+    this.greetingBg?.destroy(); this.greetingBg = undefined
+    this.greetingTitle?.destroy(); this.greetingTitle = undefined
+    this.greetingMsg?.destroy(); this.greetingMsg = undefined
+    this.greetingClose?.destroy(); this.greetingClose = undefined
+  }
+}

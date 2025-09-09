@@ -7,14 +7,29 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using KnutGame.Options;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Extend configuration: support local, untracked JSON files and user-secrets always
+// - appsettings.Local.json (all envs)
+// - appsettings.{Environment}.Local.json (per env)
+// - UserSecrets (loaded regardless of environment)
+builder.Configuration
+    .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.Local.json", optional: true, reloadOnChange: true)
+    .AddUserSecrets<Program>(optional: true);
 
 // Razor Pages
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHttpClient("openai", client =>
+{
+    client.BaseAddress = new Uri("https://api.openai.com");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 
 // JSON options: allow string enums (e.g., "POINTS") from client
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -49,9 +64,20 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IScoringEngine, ScoringEngine>();
 builder.Services.AddScoped<IAntiCheat, AntiCheatService>();
 builder.Services.AddScoped<IScoreService, ScoreService>();
+builder.Services.AddScoped<IKiTextService>(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<OpenAiOptions>>().Value;
+    if (opts.Enabled && !string.IsNullOrWhiteSpace(opts.ApiKey))
+    {
+        return ActivatorUtilities.CreateInstance<OpenAiTextService>(sp);
+    }
+    return ActivatorUtilities.CreateInstance<StaticKiTextService>(sp);
+});
 
 // Options
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection("Security"));
+builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection("OpenAI"));
+builder.Services.AddSingleton<IPostConfigureOptions<OpenAiOptions>, OpenAiOptionsPostConfigure>();
 
 
 var app = builder.Build();
@@ -101,6 +127,20 @@ app.UseAuthorization();
 
 // Razor Pages endpoints
 app.MapRazorPages();
+
+// Diagnostics: log environment and OpenAI config presence (masked)
+try
+{
+    var envName = app.Environment.EnvironmentName;
+    var openAi = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<KnutGame.Options.OpenAiOptions>>().Value;
+    string Mask(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "<none>";
+        return s.Length <= 8 ? "********" : $"{s[..3]}****{s[^4..]}";
+    }
+    app.Logger.LogInformation("Env={Env}; OpenAI Enabled={Enabled}; ApiKey={ApiKeyMasked}; Org={Org}", envName, openAi.Enabled, Mask(openAi.ApiKey), string.IsNullOrWhiteSpace(openAi.Organization) ? "<none>" : "set");
+}
+catch { }
 app.MapControllers();
 
 // Ensure database is migrated to latest schema

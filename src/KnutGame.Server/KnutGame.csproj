@@ -4,6 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Enables dotnet user-secrets for this project -->
+    <UserSecretsId>8d3f6a58-5a9a-4f74-9f7a-3a8c3b28c6a1</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
