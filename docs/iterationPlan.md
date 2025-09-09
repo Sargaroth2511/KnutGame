@@ -201,24 +201,54 @@ repo/
 
 ---
 
-## Iteration 5 – Server API (Highscores) + Persistence
-**Goal:** Server-side score storage (foundation for donation logic) with validation.
+## Iteration 5 – Server‑Authoritative Scoring + Anti‑Cheat + Persistence (implemented)
+**Goal:** Server computes score from client event streams and validates integrity.
 
-**Tasks (Server)**
-1. **Data model**
+**API (Minimal APIs)**
+- `POST /api/session/start` → `{ sessionId, issuedUtc }`.
+- `POST /api/session/submit` → `{ accepted, rejectionReason?, score?, rank?, totalPlayers? }`.
+- `GET /api/leaderboard?top=50` → `{ entries: [{ rank, score, createdUtc }] }`.
+
+**DTOs**
 ```csharp
-public record SubmitScoreRequest(string SessionId, int Score, int DurationMs, int ItemsCollected, DateTimeOffset ClientEndTimeUtc);
-public record SubmitScoreResponse(bool Accepted, string? RejectionReason, int? Rank, int? TotalPlayers);
-public class ScoreEntry { public int Id; public string SessionId; public int Score; public int DurationMs; public int ItemsCollected; public DateTimeOffset CreatedUtc; public string ClientIpHash; }
+public record MoveEvent(int t, float x);
+public enum ItemKind { POINTS, LIFE, SLOWMO, MULTI }
+public record HitEvent(int t);
+public record ItemEvent(int t, string id, ItemKind type, float x, float y);
+public record EventEnvelope(IReadOnlyList<MoveEvent> Moves, IReadOnlyList<HitEvent> Hits, IReadOnlyList<ItemEvent> Items);
+public record SubmitSessionRequest(Guid SessionId, int CanvasWidth, int CanvasHeight, DateTimeOffset ClientStartUtc, DateTimeOffset ClientEndUtc, EventEnvelope Events);
+public record SubmitSessionResponse(bool Accepted, string? RejectionReason, int? Score, int? Rank, int? TotalPlayers);
 ```
-2. **DB**: EF Core + SQLite (default). Migration `AddScores`.
-3. **API**: `POST /api/score` (Minimal API). Plausibility checks: Score > 0, duration/score ratio within bounds.
-4. **GET /api/leaderboard?top=50`**: Top X scores (Id, Score, CreatedUtc, optional nickname later).
-5. **Client integration**: Submit score at game over; fallback: local only if server unavailable.
 
-**Acceptance criteria**
-- Valid scores saved; invalid rejected with reason.
-- Leaderboard Razor Page shows Top 20 (server-rendered table).
+**Client integration**
+- Buffer events during play: `moves` (~100ms), `hits`, `items` with integer ms timestamps.
+- Generate unique item IDs on spawn; fallback creation on collect if missing.
+- On game over, submit session with `sessionId`, canvas size, client start/end times, and buffered events.
+- On restart, reset events, refresh `clientStartUtc`, and start a new session (fresh `sessionId`).
+
+**Server Scoring**
+- Base accrual: `BASE_POINTS_PER_SEC` over elapsed time.
+- Items: `POINTS` (+100), `MULTI` (multiplier window `MULTIPLIER_X` for `MULTIPLIER_MS`), `SLOWMO` (no scoring change), `LIFE` (no scoring change).
+- Simulates accrual between event timestamps; handles remaining time after last event.
+
+**Anti‑Cheat**
+- Per‑stream monotonic timestamps (moves/hits/items); events may interleave across streams.
+- Duration≈last event time (±500ms tolerance).
+- Speed cap from `MOVE_SPEED` (with margin).
+- Bounds checks for positions.
+- Item pickup proximity to interpolated player X (≤ 48px) and ground‑lane Y band.
+- Duplicate item IDs rejected; size caps on arrays.
+- JSON: server configured with `JsonStringEnumConverter` to accept string enums from client.
+
+**Persistence & Ranking**
+- EF Core + SQLite; `ScoreEntry` persisted with salted `ClientIpHash`.
+- Ranking: `rank = 1 + count(score > current)`, `totalPlayers = total entries`.
+- Local SQLite files are ignored in VCS (.gitignore); migrations recommended for schema management.
+
+**Acceptance criteria (met)**
+- Valid sessions accepted and scored; invalid sessions rejected with explicit reason.
+- Leaderboard API returns top scores; Razor Page lists entries (server-rendered table planned/optional).
+- Tests cover base scoring, points items, multiplier windows, and key anti‑cheat rules.
 
 ---
 

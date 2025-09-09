@@ -99,3 +99,31 @@ The project builds successfully and is ready for development and deployment. The
 
 ### Next
 - Upon approval, proceed to refactor `Index.cshtml` to consume `ViteManifestService` (manifest-driven assets) and tidy related code paths.
+
+## September 9, 2025
+
+### Iteration 5: Server‑Authoritative Scoring, Anti‑Cheat, and Client Sync
+- Client → Server payload fixes
+  - Rounded event timestamps to integer milliseconds for `moves/hits/items` to match server DTOs (`int`).
+  - Reset session lifecycle on restart: clear buffered events, refresh `clientStartUtc`, request a new `sessionId`.
+  - Ensured unique item IDs are attached to spawned items; added fallback generation at collection time.
+  - Submission now uses string enums for item types; server configured to accept string enum values.
+
+- Server API and validation
+  - Minimal API endpoints: `POST /api/session/start`, `POST /api/session/submit`, `GET /api/leaderboard`.
+  - Anti‑Cheat: monotonic timestamps enforced per stream (moves/hits/items) while allowing interleaving across types; duration≈last event time check (±500ms tolerance); speed limit based on `MOVE_SPEED`; bounds checks; item pickup proximity (≤ 48px from interpolated player X at time t) and ground‑lane Y band; duplicate item IDs rejected; size caps.
+  - JSON binding: added `JsonStringEnumConverter` so `ItemKind` accepts string values (e.g., "POINTS").
+  - Scoring engine: simulates base accrual + item effects; applies multiplier windows (MULTI) over time; clarified remaining‑time accrual.
+  - Persistence/ranking: salted IP hashing, store entries, compute `rank = 1 + count(score > this)`, `totalPlayers` = total entries.
+
+- Tests
+  - Added/updated xUnit tests: duration mismatch rejection, item proximity and lane validation, acceptance of interleaved events, multiplier window scoring.
+  - Full test run: all tests passing.
+
+- DB handling and VCS hygiene
+  - Guarded `EnsureCreated()` for SQLite "already exists" during test runs.
+  - Updated `.gitignore` to exclude local SQLite artifacts (`*.db`, `*.db-wal`, `*.db-shm`, etc.). Untracked `src/KnutGame.Server/knutgame.db`.
+
+### Visuals: Skyscraper Background & Street
+- Procedural background: building facade with aligned window columns; door on ground floor; street with curb and dashed line in foreground.
+- Adjustments: removed window behind door; shifted outer columns inward; lifted windows; lowered player Y to stand on street; added bottom spacing from street to first window row; removed door knob dot.
