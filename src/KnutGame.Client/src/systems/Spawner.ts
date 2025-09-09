@@ -1,5 +1,5 @@
  import Phaser from 'phaser'
-import { FALL_SPEED_MIN, FALL_SPEED_MAX, ITEM_SIZE } from '../gameConfig'
+import { FALL_SPEED_MIN, FALL_SPEED_MAX, ITEM_SIZE, OBSTACLE_VX_MIN, OBSTACLE_VX_MAX, OBSTACLE_OMEGA_MIN, OBSTACLE_OMEGA_MAX } from '../gameConfig'
 import { ItemType } from '../items'
 
 export class ObstacleSpawner {
@@ -19,7 +19,8 @@ export class ObstacleSpawner {
         ? this.scene.add.sprite(0, -60, 'tree')
         : (this.scene.add.rectangle(0, -60, 48, 96, 0x8B4513) as unknown as Phaser.GameObjects.Sprite)
       this.scene.physics.add.existing(obstacle)
-      if (hasTree) (obstacle as Phaser.GameObjects.Sprite).setOrigin(0.5, 1)
+      // Ensure bottom-center origin for all obstacle sprites
+      if ((obstacle as any).setOrigin) (obstacle as any).setOrigin(0.5, 1)
     }
 
     const randomX = Phaser.Math.Between(40, this.scene.cameras.main.width - 40)
@@ -68,6 +69,13 @@ export class ObstacleSpawner {
       else if (tier.name === 'large') sprite.setTint(0x88CC88)
       else sprite.clearTint()
     }
+
+    // Initialize drift/rotation data
+    const vx = Phaser.Math.Between(OBSTACLE_VX_MIN, OBSTACLE_VX_MAX)
+    const omega = Phaser.Math.Between(OBSTACLE_OMEGA_MIN, OBSTACLE_OMEGA_MAX)
+    obstacle.setData('vx', vx)
+    obstacle.setData('omega', omega)
+    obstacle.setData('swayPhase', Math.random() * Math.PI * 2)
 
     this.group.add(obstacle)
     obstacle.setActive(true).setVisible(true)

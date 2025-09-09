@@ -36,3 +36,21 @@ export const POWERUP_DROP_CHANCE = 0.35;
 // Display sizing
 export const PLAYER_SIZE = 64; // target size of player avatar (pixels, max dimension)
 export const ITEM_SIZE = 64;   // target size of item sprites (pixels, max dimension)
+
+// Iteration 9 dynamics
+export const DYNAMICS_ENABLED = true;
+export const OBSTACLE_VX_MIN = -40;  // px/s
+export const OBSTACLE_VX_MAX =  40;  // px/s
+// Allow free rotation; tune speed for readability
+export const OBSTACLE_OMEGA_MIN = -60; // deg/s
+export const OBSTACLE_OMEGA_MAX =  60; // deg/s
+export const OBSTACLE_SWAY_AMP = 12;   // px
+export const OBSTACLE_SWAY_FREQ = 0.7; // Hz
+export const COLLIDE_SHRINK_PLAYER = 0.85;
+export const COLLIDE_SHRINK_OBST = 0.8;
+export const COLLIDE_SHRINK_ITEM = 0.8;
+// Global fine-tune to shrink all hitboxes a bit more (visual + logic)
+export const HITBOX_GLOBAL_SHRINK = 0.95; // 5% smaller
+// Obstacle collision footprint (relative to visible sprite, anchored at bottom)
+export const OBST_COLLIDE_WIDTH_FRAC = 0.7;  // 70% of visible width
+export const OBST_COLLIDE_HEIGHT_FRAC = 0.4; // bottom 40% acts as solid trunk

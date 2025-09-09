@@ -18,7 +18,13 @@ import {
   COIN_DROP_CHANCE,
   POWERUP_SPAWN_INTERVAL_MS,
   POWERUP_DROP_CHANCE,
-  PLAYER_SIZE
+  PLAYER_SIZE,
+  DYNAMICS_ENABLED,
+  OBSTACLE_SWAY_AMP,
+  OBSTACLE_SWAY_FREQ,
+  COLLIDE_SHRINK_PLAYER,
+  COLLIDE_SHRINK_ITEM,
+  HITBOX_GLOBAL_SHRINK
 } from './gameConfig'
 import { ItemType } from './items'
 import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
@@ -93,6 +99,7 @@ export class MainScene extends Phaser.Scene {
   private snowTweens: Phaser.Tweens.Tween[] = []
   private snowBurstTimeLeft: number = 0
   private snowBurstCooldown: number = 0
+  private initialPlayerY: number = 0
 
   constructor() {
     super({ key: 'MainScene' })
@@ -117,6 +124,7 @@ export class MainScene extends Phaser.Scene {
     // Create player sprite if available, else a rectangle fallback
     const centerX = this.cameras.main.width / 2
     const playerY = this.cameras.main.height * 0.94
+    this.initialPlayerY = playerY
     if (this.textures.exists('player')) {
       const s = this.add.sprite(centerX, playerY, 'player')
       s.setOrigin(0.5, 1)
@@ -308,13 +316,31 @@ export class MainScene extends Phaser.Scene {
       this.powerupSpawnTimer = 0
     }
 
-    // Update obstacles (move them down)
+    // Update obstacles (move them down + optional drift/rotation)
     const slowMoFactorValue = slowMoFactor(this.scoreState, SLOWMO_FACTOR)
     this.obstacles.children.each((obstacle) => {
       const obs = obstacle as Phaser.GameObjects.Sprite
       const obsBody = obs.body as Phaser.Physics.Arcade.Body
       const speed = (obs.getData('speed') as number) ?? FALL_SPEED_MIN
       obsBody.setVelocityY(speed * slowMoFactorValue) // Apply slow motion
+
+      if (DYNAMICS_ENABLED) {
+        const dt = delta / 1000
+        const vx = (obs.getData('vx') as number) || 0
+        const swayPhase = (obs.getData('swayPhase') as number) || 0
+        const sway = OBSTACLE_SWAY_AMP * Math.sin((time / 1000 + swayPhase) * OBSTACLE_SWAY_FREQ)
+        obsBody.setVelocityX(vx + sway)
+        const omega = (obs.getData('omega') as number) || 0
+        obs.setAngle((obs.angle || 0) + omega * dt)
+        // Edge bounce
+        const margin = 20
+        if (obs.x < margin || obs.x > this.cameras.main.width - margin) {
+          const nvx = -((obs.getData('vx') as number) || 0)
+          obs.setData('vx', nvx)
+        }
+      } else {
+        obsBody.setVelocityX(0)
+      }
 
       // Remove obstacles that have fallen off screen
       if (obs.y > this.cameras.main.height + 50) {
@@ -346,22 +372,57 @@ export class MainScene extends Phaser.Scene {
     // Draw debug hitboxes if enabled
     if (this.debugHitboxes && this.debugGfx) {
       this.debugGfx.clear()
-      // Player bounds (green)
+      // Player collision rect (green, shrinked)
       const pAny: any = this.player as any
-      const pR = typeof pAny.getBounds === 'function' ? (pAny.getBounds() as Phaser.Geom.Rectangle) : undefined
-      if (pR) this.drawRect(this.debugGfx, pR, 0x00ff00)
-      // Obstacles (red)
+      if (typeof pAny.getBounds === 'function') {
+        const r = pAny.getBounds() as Phaser.Geom.Rectangle
+        const sr = this.shrinkRect(r, COLLIDE_SHRINK_PLAYER * HITBOX_GLOBAL_SHRINK)
+        this.drawRect(this.debugGfx, sr, 0x00ff00)
+      }
+      // Obstacles: draw oriented trunk OBB (red)
       this.obstacles.children.each((o) => {
-        const any = o as any
-        const r = typeof any.getBounds === 'function' ? (any.getBounds() as Phaser.Geom.Rectangle) : undefined
-        if (r) this.drawRect(this.debugGfx!, r, 0xff3333)
+        const s: any = o as any
+        const dw = s.displayWidth ?? s.width
+        const dh = s.displayHeight ?? s.height
+        if (dw && dh) {
+          let w = dw * 0.7
+          let h = dh * 0.4
+          h = h * 1.8 // 80% taller
+          // Apply global shrink
+          w *= HITBOX_GLOBAL_SHRINK
+          h *= HITBOX_GLOBAL_SHRINK
+          const ang = ((s.angle as number) || 0) * Math.PI/180
+          const cos = Math.cos(ang), sin = Math.sin(ang)
+          const vxL = -sin, vyL = cos // local Y axis up vector
+          const offset = (h/2) + 0.2*h
+          const cx = s.x - vxL * offset
+          const cy = s.y - vyL * offset
+          const hw = w/2, hh = h/2
+          const ux = cos, uy = sin
+          const vx2 = -sin, vy2 = cos
+          const pts = [
+            { x: cx + ux*hw + vx2*hh, y: cy + uy*hw + vy2*hh },
+            { x: cx - ux*hw + vx2*hh, y: cy - uy*hw + vy2*hh },
+            { x: cx - ux*hw - vx2*hh, y: cy - uy*hw - vy2*hh },
+            { x: cx + ux*hw - vx2*hh, y: cy + uy*hw - vy2*hh },
+          ]
+          this.debugGfx!.lineStyle(2, 0xff3333, 1)
+          this.debugGfx!.beginPath()
+          this.debugGfx!.moveTo(pts[0].x, pts[0].y)
+          for (let i=1;i<pts.length;i++) this.debugGfx!.lineTo(pts[i].x, pts[i].y)
+          this.debugGfx!.closePath()
+          this.debugGfx!.strokePath()
+        }
         return true
       })
-      // Items (yellow)
+      // Items (yellow, shrinked)
       this.items.children.each((it) => {
         const any = it as any
-        const r = typeof any.getBounds === 'function' ? (any.getBounds() as Phaser.Geom.Rectangle) : undefined
-        if (r) this.drawRect(this.debugGfx!, r, 0xffff00)
+        if (typeof any.getBounds === 'function') {
+          const r = any.getBounds() as Phaser.Geom.Rectangle
+          const sr = this.shrinkRect(r, COLLIDE_SHRINK_ITEM * HITBOX_GLOBAL_SHRINK)
+          this.drawRect(this.debugGfx!, sr, 0xffff00)
+        }
         return true
       })
     }
@@ -370,6 +431,14 @@ export class MainScene extends Phaser.Scene {
   private drawRect(g: Phaser.GameObjects.Graphics, r: Phaser.Geom.Rectangle, color: number) {
     g.lineStyle(2, color, 1)
     g.strokeRect(r.x, r.y, r.width, r.height)
+  }
+
+  private shrinkRect(r: Phaser.Geom.Rectangle, factor: number) {
+    const cx = r.x + r.width / 2
+    const cy = r.y + r.height / 2
+    const w = r.width * factor
+    const h = r.height * factor
+    return new Phaser.Geom.Rectangle(cx - w / 2, cy - h / 2, w, h)
   }
 
   // --- Ambient snow burst helpers ---
@@ -777,7 +846,7 @@ export class MainScene extends Phaser.Scene {
     }).catch(err => console.error('Failed to start session', err))
 
     // Reset player
-    this.player.setPosition(this.cameras.main.width / 2, this.cameras.main.height * 0.9)
+    this.player.setPosition(this.cameras.main.width / 2, this.initialPlayerY)
     const p2: any = this.player as any
     if (typeof p2.setFillStyle === 'function') p2.setFillStyle(0x00ff00)
     else if (typeof p2.clearTint === 'function') p2.clearTint()
