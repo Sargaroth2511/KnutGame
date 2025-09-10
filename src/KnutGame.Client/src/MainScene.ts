@@ -450,7 +450,7 @@ export class MainScene extends Phaser.Scene {
       const its = this.items.countActive(true)
       const act = this.particlePool.getActiveCount()
       const pc = this.particlePool.getPooledCounts()
-      this.perfText.setText(`OBS:${obs}  ITM:${its}  PART:a${act} p${pc.rects+pc.ellipses+pc.extra}`)
+      this.perfText.setText(`OBS:${obs}  ITM:${its}  PART:a${act} p${pc.rectangles+pc.ellipses+pc.extra}`)
     }
 
     // Draw debug hitboxes if enabled

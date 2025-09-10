@@ -1,0 +1,10 @@
+{
+    "scripts": {
+        "docs": "typedoc",
+        "docs:watch": "typedoc --watch"
+    },
+    "devDependencies": {
+        "typedoc": "^0.28.12",
+        "typedoc-plugin-markdown": "^4.8.1"
+    }
+}

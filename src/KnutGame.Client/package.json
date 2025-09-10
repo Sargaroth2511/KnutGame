@@ -10,17 +10,29 @@
     "typecheck:watch": "tsc -w --noEmit",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "docs": "typedoc --options typedoc.json",
+    "docs:watch": "typedoc --watch --options typedoc.json"
   },
   "devDependencies": {
     "@types/node": "^24.3.1",
+    "canvas": "^3.2.0",
     "jsdom": "^26.1.0",
     "phaser3spectorjs": "^0.0.8",
+    "typedoc": "^0.28.12",
     "typescript": "~5.8.3",
     "vite": "^7.1.2",
     "vitest": "^2.1.2"
   },
   "dependencies": {
     "phaser": "^3.90.0"
-  }
+  },
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

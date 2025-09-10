@@ -110,7 +110,7 @@ export class Hud {
     this.scene.tweens.add({ targets: this.livesText, scale: 1.12, duration: 120, yoyo: true, ease: 'Quad.easeOut' })
   }
 
-  showGameOver(): { restartButton: Phaser.GameObjects.Text } {
+  showGameOver(): { restartButton: Phaser.GameObjects.Text, docsButton: Phaser.GameObjects.Text } {
     const cam = this.scene.cameras.main
     this.gameOverText = this.scene.add.text(
       cam.width / 2,
@@ -128,12 +128,41 @@ export class Hud {
 
     this.restartButton = this.scene.add.text(
       cam.width / 2,
-      cam.height / 2 + 50,
+      cam.height / 2 + 30,
       'Click to Restart',
       this.textStyle('#ffffff')
     ).setOrigin(0.5).setDepth(1000).setInteractive()
 
-    return { restartButton: this.restartButton }
+    // Add documentation button below restart button
+    const docsButton = this.scene.add.text(
+      cam.width / 2,
+      cam.height / 2 + 70,
+      '📚 View Documentation',
+      {
+        fontSize: '18px',
+        color: '#3498db',
+        fontFamily: 'Arial, sans-serif',
+        resolution: 2,
+        stroke: '#ffffff',
+        strokeThickness: 2
+      }
+    ).setOrigin(0.5).setDepth(1000).setInteractive()
+
+    // Add hover effects for docs button
+    docsButton.on('pointerover', () => {
+      docsButton.setColor('#2980b9')
+      docsButton.setScale(1.05)
+    })
+    docsButton.on('pointerout', () => {
+      docsButton.setColor('#3498db')
+      docsButton.setScale(1.0)
+    })
+    docsButton.on('pointerdown', () => {
+      // Open documentation in new tab/window
+      window.open('/developer_guide.html', '_blank')
+    })
+
+    return { restartButton: this.restartButton, docsButton }
   }
 
   clearGameOver() {
@@ -142,6 +171,11 @@ export class Hud {
     this.gameOverMsgTitle?.destroy(); this.gameOverMsgTitle = undefined
     this.gameOverMsgText?.destroy(); this.gameOverMsgText = undefined
     this.gameOverMsgBg?.destroy(); this.gameOverMsgBg = undefined
+    // Clean up greeting elements if they exist
+    this.greetingBg?.destroy(); this.greetingBg = undefined
+    this.greetingTitle?.destroy(); this.greetingTitle = undefined
+    this.greetingMsg?.destroy(); this.greetingMsg = undefined
+    this.greetingClose?.destroy(); this.greetingClose = undefined
   }
 
   showGameOverMessage(title: string, message: string) {
@@ -178,7 +212,7 @@ export class Hud {
     const x = cam.width / 2 - width / 2
     const y = 80
 
-    this.greetingBg = this.scene.add.rectangle(x + width / 2, y + 80, width, 160, 0xffffff, 0.92)
+    this.greetingBg = this.scene.add.rectangle(x + width / 2, y + 80, width, 180, 0xffffff, 0.92)
       .setStrokeStyle(2, 0x222222)
       .setDepth(1000)
 
@@ -190,18 +224,31 @@ export class Hud {
       fontSize: '16px', color: '#333333', fontFamily: 'Arial, sans-serif', wordWrap: { width: width - padding * 2 }, resolution: 2
     }).setOrigin(0.5, 0).setDepth(1001)
 
-    this.greetingClose = this.scene.add.text(cam.width / 2, y + 110, 'Start Game', {
+    this.greetingClose = this.scene.add.text(cam.width / 2 - 80, y + 120, 'Start Game', {
       fontSize: '14px', color: '#2563eb', fontFamily: 'Arial, sans-serif', resolution: 2
     }).setOrigin(0.5, 0).setDepth(1001).setInteractive()
 
+    // Add documentation button next to start game button
+    const docsButton = this.scene.add.text(cam.width / 2 + 80, y + 120, '📚 Docs', {
+      fontSize: '14px', color: '#059669', fontFamily: 'Arial, sans-serif', resolution: 2
+    }).setOrigin(0.5, 0).setDepth(1001).setInteractive()
+
     this.greetingClose.on('pointerdown', () => { this.clearGreeting(); onClose?.() })
+
+    // Add hover effects and click handler for docs button
+    docsButton.on('pointerover', () => docsButton.setColor('#047857'))
+    docsButton.on('pointerout', () => docsButton.setColor('#059669'))
+    docsButton.on('pointerdown', () => {
+      window.open('/developer_guide.html', '_blank')
+    })
 
     // Fade in greeting elements
     this.greetingBg.setAlpha(0)
     this.greetingTitle.setAlpha(0)
     this.greetingMsg.setAlpha(0)
     this.greetingClose.setAlpha(0)
-    this.scene.tweens.add({ targets: [this.greetingBg, this.greetingTitle, this.greetingMsg, this.greetingClose], alpha: 1, duration: 180 })
+    docsButton.setAlpha(0)
+    this.scene.tweens.add({ targets: [this.greetingBg, this.greetingTitle, this.greetingMsg, this.greetingClose, docsButton], alpha: 1, duration: 180 })
   }
 
   clearGreeting() {
@@ -209,6 +256,7 @@ export class Hud {
     this.greetingTitle?.destroy(); this.greetingTitle = undefined
     this.greetingMsg?.destroy(); this.greetingMsg = undefined
     this.greetingClose?.destroy(); this.greetingClose = undefined
+    // Note: docs button is cleaned up automatically as it's not stored as instance variable
   }
 
   showLoadingSnow() {

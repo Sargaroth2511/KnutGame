@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+
 export default defineConfig({
   base: '/game/',
   build: {
@@ -9,6 +10,10 @@ export default defineConfig({
     rollupOptions: { input: 'src/main.ts' }
   },
   test: {
-    environment: 'jsdom'
+    environment: 'jsdom',
+    setupFiles: ['./test/setup.ts']
+  },
+  define: {
+    global: 'globalThis'
   }
 });
