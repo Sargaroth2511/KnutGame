@@ -60,6 +60,10 @@ public class ScoringEngine : IScoringEngine
                 {
                     // Life doesn't affect score directly
                 }
+                else if (item.type == ItemKind.ANGEL)
+                {
+                    // Angel (invulnerability) does not affect score directly
+                }
             }
 
             // Update remaining times

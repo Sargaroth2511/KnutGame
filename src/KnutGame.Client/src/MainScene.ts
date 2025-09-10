@@ -19,6 +19,8 @@ import {
   POWERUP_SPAWN_INTERVAL_MS,
   POWERUP_DROP_CHANCE,
   PLAYER_SIZE,
+  MAX_OBSTACLES,
+  MAX_ITEMS_AIR,
   DYNAMICS_ENABLED,
   OBSTACLE_SWAY_AMP,
   OBSTACLE_SWAY_FREQ,
@@ -38,6 +40,7 @@ import type { SubmitSessionRequest } from './services/api'
 import { drawSkyscraperBackground } from './systems/background'
 import { SessionEventsBuffer } from './systems/SessionEventsBuffer'
 import { InputController } from './systems/InputController'
+import { ParticlePool } from './systems/ParticlePool'
 // Assets
 // Obstacle/Item sprites (explicit file name from user, and glob for others)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -45,23 +48,25 @@ import { InputController } from './systems/InputController'
 import treeUrl from './assets/obstacles/xmas_tree_1.png'
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const obstacleItemPngs = import.meta.glob('./assets/obstacles/**/*.png', { eager: true, as: 'url' }) as Record<string, string>
+const obstacleItemPngs = import.meta.glob('./assets/obstacles/**/*.png?url', { eager: true, import: 'default' }) as Record<string, string>
 // Also load item sprites under assets/items
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const itemPngs = import.meta.glob('./assets/items/**/*.png', { eager: true, as: 'url' }) as Record<string, string>
+const itemPngs = import.meta.glob('./assets/items/**/*.png?url', { eager: true, import: 'default' }) as Record<string, string>
 
 // Player sprite: pick first PNG under assets/players via Vite glob
 // vite will inline URLs for matching files at build time
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const playerPngs = import.meta.glob('./assets/players/*.png', { eager: true, as: 'url' }) as Record<string, string>
+const playerPngs = import.meta.glob('./assets/players/*.png?url', { eager: true, import: 'default' }) as Record<string, string>
 const playerUrl: string | undefined = Object.values(playerPngs)[0]
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Sprite | Phaser.GameObjects.Rectangle
   private inputController?: InputController
   private fpsText!: Phaser.GameObjects.Text
+  private perfText?: Phaser.GameObjects.Text
+  private showPerfHud: boolean = false
   private isPaused: boolean = false
   private hitFxRestorer?: Phaser.Time.TimerEvent
   private multiBlinkTween?: Phaser.Tweens.Tween
@@ -106,6 +111,7 @@ export class MainScene extends Phaser.Scene {
   private snowBurstTimeLeft: number = 0
   private snowBurstCooldown: number = 0
   private initialPlayerY: number = 0
+  private particlePool!: ParticlePool
 
   constructor() {
     super({ key: 'MainScene' })
@@ -178,6 +184,20 @@ export class MainScene extends Phaser.Scene {
     })
     this.fpsText.setDepth(1000) // Ensure it's always on top
 
+    // Perf HUD (toggle with 'P')
+    this.perfText = this.add.text(10, 28, '', {
+      fontSize: '12px',
+      color: '#a3e635',
+      fontFamily: 'Arial, sans-serif',
+      resolution: 2,
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setDepth(1000).setVisible(false)
+    this.input.keyboard!.on('keydown-P', () => {
+      this.showPerfHud = !this.showPerfHud
+      this.perfText!.setVisible(this.showPerfHud)
+    })
+
     // Debug graphics (hidden by default). Toggle with 'H'.
     this.debugGfx = this.add.graphics()
     this.debugGfx.setDepth(1200).setVisible(false)
@@ -214,6 +234,9 @@ export class MainScene extends Phaser.Scene {
     this.itemSpawner = new ItemSpawner(this)
     this.items = this.itemSpawner.group
 
+    // Initialize pooled particles system
+    this.particlePool = new ParticlePool(this)
+
     // Initialize game state
     this.gameStartTime = this.time.now
     this.clientStartUtc = new Date().toISOString()
@@ -237,10 +260,12 @@ export class MainScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       document.removeEventListener('visibilitychange', onVisibility)
       this.inputController?.detach()
+      this.particlePool?.destroy()
     })
     this.events.once(Phaser.Scenes.Events.DESTROY, () => {
       document.removeEventListener('visibilitychange', onVisibility)
       this.inputController?.detach()
+      this.particlePool?.destroy()
     })
   }
 
@@ -313,19 +338,19 @@ export class MainScene extends Phaser.Scene {
     // Spawn items (legacy combined)
     this.itemSpawnTimer += delta
     if (this.itemSpawnTimer >= this.itemSpawnInterval) {
-      if (Math.random() < ITEM_DROP_CHANCE) this.spawnItem()
+      if (Math.random() < ITEM_DROP_CHANCE && this.items.countActive(true) < MAX_ITEMS_AIR) this.spawnItem()
       this.itemSpawnTimer = 0
     }
     // Spawn coins more frequently
     this.coinSpawnTimer += delta
     if (this.coinSpawnTimer >= COIN_SPAWN_INTERVAL_MS) {
-      if (Math.random() < COIN_DROP_CHANCE) this.itemSpawner.spawnCoin()
+      if (Math.random() < COIN_DROP_CHANCE && this.items.countActive(true) < MAX_ITEMS_AIR) this.itemSpawner.spawnCoin()
       this.coinSpawnTimer = 0
     }
     // Spawn powerups less frequently
     this.powerupSpawnTimer += delta
     if (this.powerupSpawnTimer >= POWERUP_SPAWN_INTERVAL_MS) {
-      if (Math.random() < POWERUP_DROP_CHANCE) this.itemSpawner.spawnPowerup()
+      if (Math.random() < POWERUP_DROP_CHANCE && this.items.countActive(true) < MAX_ITEMS_AIR) this.itemSpawner.spawnPowerup()
       this.powerupSpawnTimer = 0
     }
 
@@ -381,6 +406,16 @@ export class MainScene extends Phaser.Scene {
     // Check collisions
     this.checkCollisions()
     this.checkItemCollisions()
+
+
+    // Update perf HUD
+    if (this.showPerfHud && this.perfText) {
+      const obs = this.obstacles.countActive(true)
+      const its = this.items.countActive(true)
+      const act = this.particlePool.getActiveCount()
+      const pc = this.particlePool.getPooledCounts()
+      this.perfText.setText(`OBS:${obs}  ITM:${its}  PART:a${act} p${pc.rects+pc.ellipses+pc.extra}`)
+    }
 
     // Draw debug hitboxes if enabled
     if (this.debugHitboxes && this.debugGfx) {
@@ -524,7 +559,9 @@ export class MainScene extends Phaser.Scene {
     // Difficulty grows slowly over time (up to +50% speed)
     const elapsedSec = (this.time.now - this.gameStartTime) / 1000
     const difficulty = 1 + Math.min(0.5, elapsedSec * 0.005)
-    this.obstacleSpawner.spawn(difficulty)
+    if (this.obstacles.countActive(true) < MAX_OBSTACLES) {
+      this.obstacleSpawner.spawn(difficulty)
+    }
   }
 
   private removeObstacle(obstacle: Phaser.GameObjects.Sprite) {
@@ -652,22 +689,12 @@ export class MainScene extends Phaser.Scene {
 
   private burstParticles(x: number, y: number, color: number = 0xffffff, count: number = Phaser.Math.Between(10, 16)) {
     for (let i = 0; i < count; i++) {
-      const size = Phaser.Math.Between(2, 4)
-      const dot = this.add.rectangle(x, y, size, size, color, 0.95)
-      dot.setDepth(900)
       const angle = Phaser.Math.FloatBetween(-Math.PI, 0)
       const dist = Phaser.Math.Between(20, 60)
       const dx = Math.cos(angle) * dist
       const dy = Math.sin(angle) * dist
       const duration = Phaser.Math.Between(220, 420)
-      this.tweens.add({
-        targets: dot,
-        x: x + dx,
-        y: y + dy,
-        alpha: 0,
-        duration,
-        onComplete: () => dot.destroy()
-      })
+      this.particlePool.spawnRect({ x, y, w: Phaser.Math.Between(2, 4), h: Phaser.Math.Between(2, 4), color, alpha: 0.95, dx, dy, duration })
     }
   }
 
@@ -695,20 +722,10 @@ export class MainScene extends Phaser.Scene {
   private emitCoins(x: number, y: number) {
     const count = Phaser.Math.Between(6, 12)
     for (let i = 0; i < count; i++) {
-      const coin = this.add.ellipse(x, y, 6, 6, 0xffdd33, 1)
-      coin.setDepth(900)
       const dx = Phaser.Math.Between(-24, 24)
       const dy = -Phaser.Math.Between(70, 120)
       const duration = Phaser.Math.Between(420, 700)
-      this.tweens.add({
-        targets: coin,
-        x: x + dx,
-        y: y + dy,
-        alpha: 0.2,
-        duration,
-        ease: 'Quad.easeOut',
-        onComplete: () => coin.destroy()
-      })
+      this.particlePool.spawnEllipse({ x, y, rx: 6, ry: 6, color: 0xffdd33, alpha: 1, dx, dy, duration })
     }
   }
 
@@ -753,35 +770,22 @@ export class MainScene extends Phaser.Scene {
     const count = Phaser.Math.Between(6, 10)
     for (let i = 0; i < count; i++) {
       const sz = Phaser.Math.Between(2, 3)
-      const flake = this.add.rectangle(x + Phaser.Math.Between(-2, 2), y - 8, sz, sz, 0x99eeff, 0.95)
-      flake.setDepth(880)
       const dx = Phaser.Math.Between(6, 16)
       const dy = -Phaser.Math.Between(16, 28)
       const duration = Phaser.Math.Between(320, 520)
-      this.tweens.add({
-        targets: flake,
-        x: flake.x + dx,
-        y: flake.y + dy,
-        alpha: 0,
-        duration,
-        ease: 'Quad.easeOut',
-        onComplete: () => flake.destroy()
-      })
+      this.particlePool.spawnRect({ x: x + Phaser.Math.Between(-2, 2), y: y - 8, w: sz, h: sz, color: 0x99eeff, alpha: 0.95, dx, dy, duration, })
     }
   }
   
   private emitAngelSparks(x: number, y: number) {
     const count = Phaser.Math.Between(16, 24)
     for (let i = 0; i < count; i++) {
-      const size = Phaser.Math.Between(2, 4)
-      const dot = this.add.rectangle(x, y, size, size, 0xfff9c4, 0.98)
-      dot.setDepth(900)
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
       const dist = Phaser.Math.Between(20, 60)
       const dx = Math.cos(angle) * dist
       const dy = Math.sin(angle) * dist
       const duration = Phaser.Math.Between(300, 600)
-      this.tweens.add({ targets: dot, x: x + dx, y: y + dy, alpha: 0, duration, ease: 'Quad.easeOut', onComplete: () => dot.destroy() })
+      this.particlePool.spawnRect({ x, y, w: Phaser.Math.Between(2, 4), h: Phaser.Math.Between(2, 4), color: 0xfff9c4, alpha: 0.98, dx, dy, duration })
     }
     const ring = this.add.circle(x, y, 28)
     ring.setStrokeStyle(3, 0xfff9c4, 0.9)

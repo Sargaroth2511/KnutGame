@@ -3,7 +3,7 @@ namespace KnutGame.Models;
 public record StartSessionResponse(Guid SessionId, DateTimeOffset IssuedUtc);
 
 public record MoveEvent(int t, float x);
-public enum ItemKind { POINTS, LIFE, SLOWMO, MULTI }
+public enum ItemKind { POINTS, LIFE, SLOWMO, MULTI, ANGEL }
 public record HitEvent(int t);
 public record ItemEvent(int t, string id, ItemKind type, float x, float y);
 
