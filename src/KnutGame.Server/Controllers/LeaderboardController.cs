@@ -20,6 +20,8 @@ public class LeaderboardController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<object>> Get([FromQuery] int top = 50)
     {
+        // Clamp requested size to reasonable bounds
+        top = Math.Clamp(top, 1, 100);
         var scores = await _db.Scores
             .OrderByDescending(s => s.Score)
             .Take(top)
@@ -29,4 +31,3 @@ public class LeaderboardController : ControllerBase
         return Ok(new { entries });
     }
 }
-

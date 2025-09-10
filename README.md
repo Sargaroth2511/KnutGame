@@ -113,7 +113,9 @@ KnutGame/
 - Server (xUnit):
   - Location: `tests/KnutGame.Server.Tests`
   - Run: `dotnet test`
-  - Covers: Razor Index responds 200 and manifest + asset serving from `/game/*`.
+  - Covers: Razor Index, session/leaderboard, anti-cheat, scoring, OpenAI fallback, and static asset/manifest serving.
+  - Note: Some integration tests reference `/wwwroot/game/manifest.json`. The repository includes prebuilt assets, but if you clean them or use a fresh checkout, build the client first so the manifest exists:
+    - `cd src/KnutGame.Client && npm install && npm run build`
 
 - Client (Vitest):
   - Location: `src/KnutGame.Client/test`

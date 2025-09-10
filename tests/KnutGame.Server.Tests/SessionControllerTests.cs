@@ -109,4 +109,26 @@ public class SessionControllerTests
         var expected = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes("pepper" + ip)));
         Assert.Equal(expected, scoreSvc.Last!.Value.IpHash);
     }
+
+    [Fact]
+    public async Task Submit_Uses_Unknown_When_Ip_Missing()
+    {
+        var scoreSvc = new CapturingScoreService(rank: 1, total: 1);
+        var ctl = new SessionController(
+            new StubAntiCheat(true),
+            new StubScoring(5),
+            scoreSvc,
+            Microsoft.Extensions.Options.Options.Create(new SecurityOptions { IpHashSalt = "salt" })
+        );
+        // Do not set RemoteIpAddress
+        ctl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var req = new SubmitSessionRequest(Guid.NewGuid(), 800, 600,
+            DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow,
+            new EventEnvelope([], [], [])
+        );
+        _ = await ctl.Submit(req);
+        var expected = Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("salt" + "unknown")));
+        Assert.Equal(expected, scoreSvc.Last!.Value.IpHash);
+    }
 }

@@ -34,7 +34,8 @@ export class ParticlePool {
 
   private release(obj: Phaser.GameObjects.GameObject) {
     this.activeCount = Math.max(0, this.activeCount - 1)
-    obj.setActive(false).setVisible(false)
+    obj.setActive(false)
+    ;(obj as any).visible = false
     if (obj instanceof Phaser.GameObjects.Rectangle) this.rectPool.push(obj)
     else if (obj instanceof Phaser.GameObjects.Ellipse) this.ellipsePool.push(obj)
     else obj.destroy() // fallback safeguard

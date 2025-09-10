@@ -178,11 +178,11 @@ export class Hud {
     const x = cam.width / 2 - width / 2
     const y = 80
 
-    this.greetingBg = this.scene.add.rectangle(cam.width / 2, y + 80, width, 160, 0xffffff, 0.92)
+    this.greetingBg = this.scene.add.rectangle(x + width / 2, y + 80, width, 160, 0xffffff, 0.92)
       .setStrokeStyle(2, 0x222222)
       .setDepth(1000)
 
-    this.greetingTitle = this.scene.add.text(cam.width / 2, y + 20, title, {
+    this.greetingTitle = this.scene.add.text(x + width / 2, y + 20, title, {
       fontSize: '20px', color: '#111111', fontFamily: 'Arial, sans-serif', resolution: 2
     }).setOrigin(0.5, 0).setDepth(1001)
 

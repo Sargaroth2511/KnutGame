@@ -15,7 +15,6 @@ export function drawSkyscraperBackground(scene: Phaser.Scene) {
 
   // Ground elements
   const streetHeight = 90
-  const curbHeight = 4
   const groundFloorHeight = 140 // door & lobby area before windows start
 
   // Window layout: aligned columns, 4 rows, bigger windows starting above ground floor

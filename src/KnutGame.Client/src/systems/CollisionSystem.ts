@@ -17,6 +17,10 @@ function shrinkRect(r: Phaser.Geom.Rectangle, factor = 0.8): Phaser.Geom.Rectang
 type OBB = { cx: number, cy: number, hw: number, hh: number, cos: number, sin: number }
 
 function orientedObstacleOBB(sprite: any): OBB | null {
+  if (sprite && typeof sprite.getData === "function") {
+    const c = sprite.getData("collidable");
+    if (c === false) return null;
+  }
   if (!sprite) return null
   const dw = sprite.displayWidth ?? sprite.width
   const dh = sprite.displayHeight ?? sprite.height
@@ -96,9 +100,8 @@ function obbIntersect(a: OBB, b: OBB): boolean {
 export function checkObstacleCollision(
   player: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Sprite,
   obstacles: Phaser.GameObjects.Group,
-  onHit: () => void
+  onHit: (obstacle: Phaser.GameObjects.Sprite) => void
 ) {
-  let hit = false
   const pB = visualBounds(player as any)
   if (!pB) return
   const pRect = shrinkRect(pB, COLLIDE_SHRINK_PLAYER * HITBOX_GLOBAL_SHRINK)
@@ -107,12 +110,12 @@ export function checkObstacleCollision(
     const oOBB = orientedObstacleOBB(obstacle as any)
     if (!oOBB) return true
     if (obbIntersect(pOBB, oOBB)) {
-      hit = true
+      onHit(obstacle as any)
       return false
     }
     return true
   })
-  if (hit) onHit()
+  // onHit invoked inline when collision is detected
 }
 
 export function checkItemCollisions(

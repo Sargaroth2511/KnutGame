@@ -41,6 +41,8 @@ import { drawSkyscraperBackground } from './systems/background'
 import { SessionEventsBuffer } from './systems/SessionEventsBuffer'
 import { InputController } from './systems/InputController'
 import { ParticlePool } from './systems/ParticlePool'
+import { ToppledManager } from './systems/ToppledManager'
+import { GROUND_Y_FRAC } from './gameConfig'
 // Assets
 // Obstacle/Item sprites (explicit file name from user, and glob for others)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -77,6 +79,10 @@ export class MainScene extends Phaser.Scene {
   // Iteration 3 additions
   private obstacles!: Phaser.GameObjects.Group
   private obstacleSpawner!: ObstacleSpawner
+  private toppledAnim!: Phaser.GameObjects.Group
+  private toppledBlocking!: Phaser.GameObjects.Group
+  private toppledManager!: ToppledManager
+  private groundY!: number
   private lives: number = 3
   // HUD-managed texts
   private gameStartTime: number = 0
@@ -111,7 +117,10 @@ export class MainScene extends Phaser.Scene {
   private snowBurstTimeLeft: number = 0
   private snowBurstCooldown: number = 0
   private initialPlayerY: number = 0
+  private postGameRunLeftMs: number = 0
   private particlePool!: ParticlePool
+  private lastHitObstacle?: Phaser.GameObjects.Sprite
+  private lastHitSafeUntil: number = 0
 
   constructor() {
     super({ key: 'MainScene' })
@@ -166,6 +175,7 @@ export class MainScene extends Phaser.Scene {
       this.physics.add.existing(r)
       this.player = r
     }
+    ;(this as any).player = this.player
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
     playerBody.setCollideWorldBounds(true)
 
@@ -230,6 +240,16 @@ export class MainScene extends Phaser.Scene {
     // Spawners and groups
     this.obstacleSpawner = new ObstacleSpawner(this)
     this.obstacles = this.obstacleSpawner.group
+    const pAny: any = this.player as any
+    if (typeof pAny.getBounds === "function") {
+      const pb = pAny.getBounds() as Phaser.Geom.Rectangle
+      this.groundY = pb.bottom
+    } else {
+      this.groundY = this.cameras.main.height * GROUND_Y_FRAC
+    }
+    this.toppledAnim = this.add.group()
+    this.toppledBlocking = this.add.group()
+    this.toppledManager = new ToppledManager(this, this.toppledAnim, this.toppledBlocking, this.groundY)
 
     this.itemSpawner = new ItemSpawner(this)
     this.items = this.itemSpawner.group
@@ -273,7 +293,14 @@ export class MainScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     // Spinner rotation uses tweens; no per-frame tick needed
-    if (this.isPaused || this.isGameOver) return
+    if (this.isPaused) return
+    if (this.isGameOver) {
+      if (this.postGameRunLeftMs > 0) {
+        this.postGameRunLeftMs -= delta
+      } else {
+        return
+      }
+    }
 
     // Update FPS counter
     this.fpsText.setText(`FPS: ${Math.round(this.game.loop.actualFps)}`)
@@ -294,6 +321,8 @@ export class MainScene extends Phaser.Scene {
       this.startMultiplierBlink()
     } else if (this.scoreState.multiplier === 1 && this.multiBlinkTween) {
       this.stopMultiplierBlink()
+    this.lastHitObstacle = undefined
+    this.lastHitSafeUntil = 0
     }
 
     // Handle invulnerability timer
@@ -323,6 +352,7 @@ export class MainScene extends Phaser.Scene {
       this.moveBufferTimer = 0
     }
 
+    if (!this.isGameOver) {
     // Spawn obstacles
     this.spawnTimer += delta
     if (this.spawnTimer >= this.spawnInterval) {
@@ -334,7 +364,9 @@ export class MainScene extends Phaser.Scene {
         this.spawnInterval -= SPAWN_INTERVAL_DECAY
       }
     }
+    }
 
+    if (!this.isGameOver) {
     // Spawn items (legacy combined)
     this.itemSpawnTimer += delta
     if (this.itemSpawnTimer >= this.itemSpawnInterval) {
@@ -352,6 +384,8 @@ export class MainScene extends Phaser.Scene {
     if (this.powerupSpawnTimer >= POWERUP_SPAWN_INTERVAL_MS) {
       if (Math.random() < POWERUP_DROP_CHANCE && this.items.countActive(true) < MAX_ITEMS_AIR) this.itemSpawner.spawnPowerup()
       this.powerupSpawnTimer = 0
+    }
+
     }
 
     // Update obstacles (move them down + optional drift/rotation)
@@ -404,7 +438,9 @@ export class MainScene extends Phaser.Scene {
     })
 
     // Check collisions
-    this.checkCollisions()
+    if (!this.isGameOver) this.checkCollisions()
+    // Update toppled trees
+    this.toppledManager.update(delta)
     this.checkItemCollisions()
 
 
@@ -529,7 +565,14 @@ export class MainScene extends Phaser.Scene {
 
   private updateSnowBurst(delta: number) {
     // Skip when game paused or over
-    if (this.isPaused || this.isGameOver) return
+    if (this.isPaused) return
+    if (this.isGameOver) {
+      if (this.postGameRunLeftMs > 0) {
+        this.postGameRunLeftMs -= delta
+      } else {
+        return
+      }
+    }
     if (this.snowBurstTimeLeft > 0) {
       this.snowBurstTimeLeft -= delta
       if (this.snowBurstTimeLeft <= 0) {
@@ -570,7 +613,31 @@ export class MainScene extends Phaser.Scene {
 
   private checkCollisions() {
     if (this.invulnerable) return
-    collideObstacles(this.player, this.obstacles, () => this.handleCollision())
+    let registered = false
+    // Falling obstacles: topple on hit
+    collideObstacles(this.player, this.obstacles, (obs) => {
+      if (registered) return
+      registered = true
+      if (this.lastHitObstacle && obs === this.lastHitObstacle && this.time.now < this.lastHitSafeUntil) { return }
+      this.onObstacleHit(obs as Phaser.GameObjects.Sprite, true)
+    })
+    // Settled trees: resolve overlap without damage
+    collideObstacles(this.player, this.toppledBlocking, (obs) => {
+      if (registered) return; registered = true;
+      const o:any = obs as any; const dir = (this.player.x >= o.x) ? 1 : -1;
+      const push = 16 * dir; this.player.x += push;
+      // No damage on settled trees
+    })
+  }
+
+  private onObstacleHit(obstacle: Phaser.GameObjects.Sprite, canTopple: boolean) {
+    this.lastHitObstacle = obstacle
+    if (canTopple) {
+      // Remove from falling group but keep the sprite instance
+      this.obstacles.remove(obstacle)
+      this.toppledManager.addFromFalling(obstacle, this.player.x)
+    }
+    this.handleCollision()
   }
 
   private spawnItem() {
@@ -653,6 +720,7 @@ export class MainScene extends Phaser.Scene {
     // Make player invulnerable for 1 second
     this.invulnerable = true
     this.invulnerableTimer = INVULNERABILITY_MS
+    this.lastHitSafeUntil = this.time.now + INVULNERABILITY_MS
     // Flash red: rectangle uses fill, sprite uses tint
     const p: any = this.player as any
     if (typeof p.setFillStyle === 'function') p.setFillStyle(0xff0000)
@@ -818,7 +886,9 @@ export class MainScene extends Phaser.Scene {
 
   private gameOver() {
     this.isGameOver = true
-    this.physics.pause()
+    this.postGameRunLeftMs = 2000
+    // Delay physics pause to allow topple/particles to finish
+    this.time.delayedCall(2000, () => this.physics.pause())
 
     // Show Game Over via HUD and wire restart
     const { restartButton } = this.hud.showGameOver()
@@ -895,6 +965,8 @@ export class MainScene extends Phaser.Scene {
     if (typeof p2.setFillStyle === 'function') p2.setFillStyle(0x00ff00)
     else if (typeof p2.clearTint === 'function') p2.clearTint()
     this.stopMultiplierBlink()
+    this.lastHitObstacle = undefined
+    this.lastHitSafeUntil = 0
 
     // Clear obstacles
     this.obstacles.children.each((obstacle) => {
@@ -902,11 +974,18 @@ export class MainScene extends Phaser.Scene {
       return true
     })
 
+    // Clear toppled trees
+    this.toppledAnim?.clear(true, true)
+    this.toppledBlocking?.clear(true, true)
+
     // Clear items
     this.items.children.each((item) => {
       this.removeItem(item as Phaser.GameObjects.Rectangle)
       return true
     })
+
+    // Reset toppled manager
+    if (this.toppledManager) { this.toppledManager.clear() }
 
     // Remove game over UI
     this.hud.clearGameOver()

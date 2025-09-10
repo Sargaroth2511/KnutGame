@@ -55,3 +55,17 @@ export const HITBOX_GLOBAL_SHRINK = 0.95; // 5% smaller
 // Obstacle collision footprint (relative to visible sprite, anchored at bottom)
 export const OBST_COLLIDE_WIDTH_FRAC = 0.7;  // 70% of visible width
 export const OBST_COLLIDE_HEIGHT_FRAC = 0.4; // bottom 40% acts as solid trunk
+
+
+// Grounding & topple tuning
+export const GROUND_Y_FRAC = 0.94;     // fraction of screen height treated as street line
+export const TOPPLE_KNOCKBACK_PX = 18; // quick lateral offset on impact
+export const TOPPLE_IMPACT_SPIN = 15;  // deg of instantaneous spin on impact (sign = away)
+export const TOPPLE_DROP_ACCEL = 700; // px/s^2 used when simulating post-impact fall to ground
+export const TOPPLE_MAX_DROP_V = 420;  // px/s clamp for the post-impact fall phase
+
+
+export const TOPPLE_IMPACT_MS = 160;     // brief stagger after collision
+export const TOPPLE_IMPACT_EASE = 'Quad.out';
+export const TOPPLE_FALL_VX = 40;        // px/s lateral drift during fall (decays)
+export const TOPPLE_FALL_TAU = 0.8;      // s, time constant for decay of lateral drift
