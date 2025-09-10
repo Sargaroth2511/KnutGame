@@ -48,17 +48,17 @@ import { ParticlePool } from './systems/ParticlePool'
 import treeUrl from './assets/obstacles/xmas_tree_1.png'
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const obstacleItemPngs = import.meta.glob('./assets/obstacles/**/*.png?url', { eager: true, import: 'default' }) as Record<string, string>
+const obstacleItemPngs = import.meta.glob('./assets/obstacles/**/*.png', { eager: true, import: 'default' }) as Record<string, string>
 // Also load item sprites under assets/items
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const itemPngs = import.meta.glob('./assets/items/**/*.png?url', { eager: true, import: 'default' }) as Record<string, string>
+const itemPngs = import.meta.glob('./assets/items/**/*.png', { eager: true, import: 'default' }) as Record<string, string>
 
 // Player sprite: pick first PNG under assets/players via Vite glob
 // vite will inline URLs for matching files at build time
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-const playerPngs = import.meta.glob('./assets/players/*.png?url', { eager: true, import: 'default' }) as Record<string, string>
+const playerPngs = import.meta.glob('./assets/players/*.png', { eager: true, import: 'default' }) as Record<string, string>
 const playerUrl: string | undefined = Object.values(playerPngs)[0]
 
 export class MainScene extends Phaser.Scene {
