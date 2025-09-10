@@ -12,7 +12,7 @@ export interface SubmitSessionRequest {
   events: {
     moves: { t: number; x: number }[];
     hits: { t: number }[];
-    items: { t: number; id: string; type: 'POINTS' | 'LIFE' | 'SLOWMO' | 'MULTI'; x: number; y: number }[];
+    items: { t: number; id: string; type: 'POINTS' | 'LIFE' | 'SLOWMO' | 'MULTI' | 'ANGEL'; x: number; y: number }[];
   };
 }
 

@@ -25,6 +25,7 @@ import {
   COLLIDE_SHRINK_PLAYER,
   COLLIDE_SHRINK_ITEM,
   HITBOX_GLOBAL_SHRINK
+  , ANGEL_INVULN_MS
 } from './gameConfig'
 import { ItemType } from './items'
 import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
@@ -45,6 +46,11 @@ import treeUrl from './assets/obstacles/xmas_tree_1.png'
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 const obstacleItemPngs = import.meta.glob('./assets/obstacles/**/*.png', { eager: true, as: 'url' }) as Record<string, string>
+// Also load item sprites under assets/items
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+const itemPngs = import.meta.glob('./assets/items/**/*.png', { eager: true, as: 'url' }) as Record<string, string>
+
 // Player sprite: pick first PNG under assets/players via Vite glob
 // vite will inline URLs for matching files at build time
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -109,6 +115,11 @@ export class MainScene extends Phaser.Scene {
     this.load.image('tree', treeUrl)
     // Load all obstacle/item images by their base filename as key
     for (const [path, url] of Object.entries(obstacleItemPngs)) {
+      const base = path.split('/').pop()!.replace(/\.[^/.]+$/, '')
+      if (!this.textures.exists(base)) this.load.image(base, url)
+    }
+    // Load all item images (assets/items/**)
+    for (const [path, url] of Object.entries(itemPngs)) {
       const base = path.split('/').pop()!.replace(/\.[^/.]+$/, '')
       if (!this.textures.exists(base)) this.load.image(base, url)
     }
@@ -263,12 +274,14 @@ export class MainScene extends Phaser.Scene {
     // Handle invulnerability timer
     if (this.invulnerable) {
       this.invulnerableTimer -= delta
+      this.hud.setShield(true, this.invulnerableTimer / 1000)
       if (this.invulnerableTimer <= 0) {
         this.invulnerable = false
         // Restore player appearance
         const p: any = this.player as any
         if (typeof p.setFillStyle === 'function') p.setFillStyle(0x00ff00)
         else if (typeof p.clearTint === 'function') p.clearTint()
+        this.hud.setShield(false)
       }
     }
 
@@ -577,6 +590,12 @@ export class MainScene extends Phaser.Scene {
         this.hud.pulseMultiplier()
         this.startMultiplierBlink()
         break
+      case ItemType.ANGEL:
+        this.invulnerable = true
+        this.invulnerableTimer = ANGEL_INVULN_MS
+        this.emitAngelSparks(this.player.x, this.player.y)
+        this.hud.setShield(true, ANGEL_INVULN_MS / 1000)
+        break
     }
 
     // Generic pickup aura (in item color)
@@ -667,6 +686,7 @@ export class MainScene extends Phaser.Scene {
       case ItemType.LIFE: return 0xff0000
       case ItemType.SLOWMO: return 0x00ffff
       case ItemType.MULTI: return 0xff8800
+      case ItemType.ANGEL: return 0xffffff
       default: return 0xffffff
     }
   }
@@ -748,6 +768,26 @@ export class MainScene extends Phaser.Scene {
         onComplete: () => flake.destroy()
       })
     }
+  }
+  
+  private emitAngelSparks(x: number, y: number) {
+    const count = Phaser.Math.Between(16, 24)
+    for (let i = 0; i < count; i++) {
+      const size = Phaser.Math.Between(2, 4)
+      const dot = this.add.rectangle(x, y, size, size, 0xfff9c4, 0.98)
+      dot.setDepth(900)
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
+      const dist = Phaser.Math.Between(20, 60)
+      const dx = Math.cos(angle) * dist
+      const dy = Math.sin(angle) * dist
+      const duration = Phaser.Math.Between(300, 600)
+      this.tweens.add({ targets: dot, x: x + dx, y: y + dy, alpha: 0, duration, ease: 'Quad.easeOut', onComplete: () => dot.destroy() })
+    }
+    const ring = this.add.circle(x, y, 28)
+    ring.setStrokeStyle(3, 0xfff9c4, 0.9)
+    ring.setDepth(850)
+    ring.setScale(0.7)
+    this.tweens.add({ targets: ring, scale: 1.3, alpha: 0, duration: 360, onComplete: () => ring.destroy() })
   }
 
   private startMultiplierBlink() {

@@ -108,7 +108,7 @@ export class ItemSpawner {
 
   spawnCoin(): Phaser.GameObjects.Rectangle { return this.spawnType(ItemType.POINTS) }
   spawnPowerup(): Phaser.GameObjects.Rectangle {
-    const types = [ItemType.LIFE, ItemType.SLOWMO, ItemType.MULTI]
+    const types = [ItemType.LIFE, ItemType.SLOWMO, ItemType.MULTI, ItemType.ANGEL]
     const t = types[Math.floor(Math.random() * types.length)]
     return this.spawnType(t)
   }
@@ -198,6 +198,7 @@ export class ItemSpawner {
       case ItemType.LIFE: return 0xff0000
       case ItemType.SLOWMO: return 0x00ffff
       case ItemType.MULTI: return 0xff8800
+      case ItemType.ANGEL: return 0xFFFFFF
       default: return 0xffffff
     }
   }
@@ -207,7 +208,8 @@ export class ItemSpawner {
       [ItemType.POINTS]: ['gift', 'present', 'box', 'yellow'],
       [ItemType.LIFE]: ['heart', 'redheart', 'life'],
       [ItemType.SLOWMO]: ['snowflake', 'snow', 'flake', 'icy'],
-      [ItemType.MULTI]: ['star', 'orange', 'bonus']
+      [ItemType.MULTI]: ['star', 'orange', 'bonus'],
+      [ItemType.ANGEL]: ['angel', 'cherub']
     }
     const keys = Object.keys((this.scene.textures as any).list ?? {})
     // Prefer exact matches of common names
@@ -215,7 +217,8 @@ export class ItemSpawner {
       [ItemType.POINTS]: ['gift', 'gift_yellow'],
       [ItemType.LIFE]: ['heart'],
       [ItemType.SLOWMO]: ['snowflake'],
-      [ItemType.MULTI]: ['star']
+      [ItemType.MULTI]: ['star'],
+      [ItemType.ANGEL]: ['angel']
     }
     for (const k of exactCandidates[t]) if (this.scene.textures.exists(k)) return k
     // Fallback: substring search by hints

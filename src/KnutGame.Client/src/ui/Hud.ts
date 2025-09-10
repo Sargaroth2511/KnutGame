@@ -7,6 +7,7 @@ export class Hud {
   private scoreText!: Phaser.GameObjects.Text
   private multiplierText!: Phaser.GameObjects.Text
   private bestText!: Phaser.GameObjects.Text
+  private shieldText?: Phaser.GameObjects.Text
 
   private gameOverText?: Phaser.GameObjects.Text
   private restartButton?: Phaser.GameObjects.Text
@@ -76,6 +77,22 @@ export class Hud {
 
   setBest(best: number) {
     this.bestText.setText(`Best: ${best}`)
+  }
+
+  setShield(active: boolean, secondsRemaining?: number) {
+    const cam = this.scene.cameras.main
+    if (active) {
+      if (!this.shieldText) {
+        this.shieldText = this.scene.add.text(cam.width - 10, 100, '', this.textStyle('#00ffff'))
+          .setOrigin(1, 0)
+          .setDepth(1000)
+      }
+      const s = Math.max(0, (secondsRemaining ?? 0)).toFixed(1)
+      this.shieldText.setText(`Shield: ${s}s`)
+      this.shieldText.setVisible(true)
+    } else if (this.shieldText) {
+      this.shieldText.setVisible(false)
+    }
   }
 
   // Subtle UI pulses for feedback

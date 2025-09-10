@@ -2,7 +2,8 @@ export const ItemType = {
   POINTS: 'POINTS',
   LIFE: 'LIFE',
   SLOWMO: 'SLOWMO',
-  MULTI: 'MULTI'
+  MULTI: 'MULTI',
+  ANGEL: 'ANGEL'
 } as const;
 
 export type ItemType = typeof ItemType[keyof typeof ItemType];

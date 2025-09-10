@@ -36,6 +36,7 @@ export const POWERUP_DROP_CHANCE = 0.35;
 // Display sizing
 export const PLAYER_SIZE = 64; // target size of player avatar (pixels, max dimension)
 export const ITEM_SIZE = 64;   // target size of item sprites (pixels, max dimension)
+export const ANGEL_INVULN_MS = 3000; // 3s invulnerability from angel
 
 // Iteration 9 dynamics
 export const DYNAMICS_ENABLED = true;
