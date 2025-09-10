@@ -25,7 +25,12 @@ public class DocsModel : PageModel
         // Collect markdown files from known folders at repository root
         var contentRoot = _env.ContentRootPath; // e.g., .../src/KnutGame.Server
         var repoRoot = Path.GetFullPath(Path.Combine(contentRoot, "..", ".."));
-        var roots = new[] { Path.Combine(repoRoot, "docs"), Path.Combine(repoRoot, "agent_tasks") };
+        var roots = new[]
+        {
+            Path.Combine(repoRoot, "docs"),
+            Path.Combine(repoRoot, "agent_tasks"),
+            Path.Combine(repoRoot, "qa_reports")
+        };
 
         var allowed = new List<string>();
         foreach (var root in roots)
@@ -62,7 +67,12 @@ public class DocsModel : PageModel
     {
         var contentRoot = _env.ContentRootPath;
         var repoRoot = Path.GetFullPath(Path.Combine(contentRoot, "..", ".."));
-        var roots = new[] { Path.Combine(repoRoot, "docs"), Path.Combine(repoRoot, "agent_tasks") };
+        var roots = new[]
+        {
+            Path.Combine(repoRoot, "docs"),
+            Path.Combine(repoRoot, "agent_tasks"),
+            Path.Combine(repoRoot, "qa_reports")
+        };
 
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var root in roots)
