@@ -13,6 +13,8 @@ type Entry = {
   vy: number,
   vx: number,
   impactLeft: number,
+  knockPx: number,
+  impactSpin: number,
   startAngle: number
 }
 
@@ -44,21 +46,37 @@ export class ToppledManager {
     }
     ; (obstacle as any).setOrigin?.(0.5, 1)
     const dir: 1 | -1 = (playerX < obstacle.x) ? -1 : 1
-    const simpleMode = (this.blockGroup === this.animGroup)
+    // Classify hit alignment: head-on if horizontally aligned within fraction of sprite width
+    const dw:any = (obstacle as any).displayWidth || (obstacle as any).width || 64
+    const headAlignFrac = 0.18
+    const headOn = Math.abs(playerX - obstacle.x) <= dw * headAlignFrac
+    // Choose rotation dir for head-on: based on initial angle sign when available
+    let finalDir: 1 | -1 = dir as 1 | -1
+    if (headOn) {
+      const ang = (obstacle.angle || 0)
+      if (ang > 1) finalDir = 1
+      else if (ang < -1) finalDir = -1
+    }
+    const vyHeadFactor = 0.10
+    const vySideFactor = 0.50
+    const knockHeadMul = 0.6
+    const extraSidePush = 10
     const entry: Entry = {
       sprite: obstacle,
       baseX: obstacle.x,
       baseY: obstacle.y,
-      dir,
+      dir: finalDir,
       elapsed: 0,
-      state: simpleMode ? 'toppling' : 'impact',
+      state: (this.blockGroup === this.animGroup) ? 'toppling' : 'impact',
       lifeLeft: TOPPLE_BLOCK_MS,
-      vy: Math.min(vy0, TOPPLE_MAX_DROP_V),
-      vx: TOPPLE_FALL_VX * dir,
+      vy: Math.min(vy0, TOPPLE_MAX_DROP_V) * (headOn ? vyHeadFactor : vySideFactor),
+      vx: headOn ? 0 : (TOPPLE_FALL_VX * finalDir),
       impactLeft: TOPPLE_IMPACT_MS,
+      knockPx: (TOPPLE_KNOCKBACK_PX * (headOn ? knockHeadMul : 1)) + (headOn ? 0 : extraSidePush),
+      impactSpin: (headOn ? Math.max(8, TOPPLE_IMPACT_SPIN * 0.6) : TOPPLE_IMPACT_SPIN),
       startAngle: obstacle.angle || 0
     }
-    obstacle.setActive(true).setVisible(true)
+obstacle.setActive(true).setVisible(true)
     this.animGroup.add(obstacle)
     this.active.push(entry)
   }
@@ -72,11 +90,11 @@ export class ToppledManager {
         e.impactLeft -= deltaMs
         const p = 1 - Math.max(0, e.impactLeft) / TOPPLE_IMPACT_MS
         const eased = 1 - Math.pow(1 - p, 2)
-        const x = e.baseX + TOPPLE_KNOCKBACK_PX * eased * e.dir
+        const x = e.baseX + e.knockPx * eased * e.dir
         // gently reduce vy (prevent suction)
         e.vy *= Math.max(0, 1 - 3 * dt)
         e.sprite.setPosition(x, e.baseY)
-        e.sprite.setAngle(e.startAngle + (TOPPLE_IMPACT_SPIN * eased * e.dir))
+        e.sprite.setAngle(e.startAngle + (e.impactSpin * eased * e.dir))
         if (e.impactLeft <= 0) {
           e.state = 'fallingToGround'
         }
