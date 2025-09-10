@@ -101,7 +101,7 @@ KnutGame/
 
 ### Useful Dev Endpoints
 - Swagger (Development only): `GET /swagger`
-- Docs viewer (Development only): `GET /Docs` — browse & download `.md` docs
+- Docs viewer (Development only): `GET /Docs` — browse & download `.md` files from `docs/`, `agent_tasks/`, and `qa_reports/`
 
 ### AI Greeting (Iteration 7)
 - Endpoint: `GET /api/greeting?kind=start` → `{ title, message }`

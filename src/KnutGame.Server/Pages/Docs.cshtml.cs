@@ -9,9 +9,10 @@ namespace KnutGame.Pages;
 public class DocsModel : PageModel
 {
     private readonly IWebHostEnvironment _env;
-    public record DocFile(string DisplayName, string RelativePath);
+    public record DocFile(string Title, string RelativePath, string Group, int? Iteration, string FileName);
 
     public List<DocFile> Files { get; private set; } = new();
+    public Dictionary<string, List<DocFile>> Grouped { get; private set; } = new();
     public string? SelectedPath { get; private set; }
     public string? ContentHtml { get; private set; }
 
@@ -40,9 +41,24 @@ public class DocsModel : PageModel
             {
                 allowed.Add(md);
                 var rel = Path.GetRelativePath(repoRoot, md).Replace('\\', '/');
-                Files.Add(new DocFile(rel, rel));
+                var group = rel.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "docs";
+                var fileName = Path.GetFileNameWithoutExtension(md);
+                var (title, iteration) = BuildTitle(fileName);
+                Files.Add(new DocFile(title, rel, group, iteration, fileName));
             }
         }
+
+        // Build grouped view with friendly ordering
+        Grouped = Files
+            .GroupBy(f => f.Group)
+            .OrderBy(g => g.Key.Equals("agent_tasks", StringComparison.OrdinalIgnoreCase) ? 0 : g.Key.Equals("docs", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ToDictionary(
+                g => g.Key,
+                g => g
+                    .OrderBy(f => f.Iteration.HasValue ? f.Iteration.Value : int.MaxValue)
+                    .ThenBy(f => f.FileName, StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+            );
 
         if (!string.IsNullOrWhiteSpace(file))
         {
@@ -90,5 +106,42 @@ public class DocsModel : PageModel
         var bytes = System.IO.File.ReadAllBytes(full);
         var name = Path.GetFileName(full);
         return File(bytes, "text/markdown", name);
+    }
+
+    private static (string title, int? iteration) BuildTitle(string fileName)
+    {
+        // Normalize name
+        var name = fileName.Replace('-', ' ').Replace('_', ' ').Trim();
+        int? iter = null;
+
+        // Detect patterns like "iteration8 ..." or "iteration_08 ..."
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 0)
+        {
+            var head = parts[0].ToLowerInvariant();
+            if (head.StartsWith("iteration"))
+            {
+                var digits = new string(head.SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray());
+                if (int.TryParse(digits, out var n))
+                {
+                    iter = n;
+                    var suffix = string.Join(' ', parts.Skip(1));
+                    var niceSuffix = ToTitleCase(suffix);
+                    var title = string.IsNullOrWhiteSpace(niceSuffix) ? $"Iteration {n}" : $"Iteration {n} — {niceSuffix}";
+                    return (title, iter);
+                }
+            }
+        }
+
+        // Fallback: title case whole name
+        return (ToTitleCase(name), iter);
+    }
+
+    private static string ToTitleCase(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text;
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(w => char.ToUpperInvariant(w[0]) + (w.Length > 1 ? w.Substring(1) : string.Empty));
+        return string.Join(' ', words);
     }
 }

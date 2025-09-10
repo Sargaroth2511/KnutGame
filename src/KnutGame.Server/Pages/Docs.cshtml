@@ -57,13 +57,17 @@
     </header>
     <div class="container">
         <aside class="sidebar">
-            <h3>Markdown Files</h3>
-            @foreach (var f in Model.Files.OrderBy(f => f.RelativePath))
+            <h3>Documentation</h3>
+            @foreach (var grp in Model.Grouped)
             {
-                <div class="file">
-                    <div><a href="/Docs?file=@Uri.EscapeDataString(f.RelativePath)">@System.IO.Path.GetFileName(f.RelativePath)</a></div>
-                    <div class="path">@f.RelativePath</div>
-                </div>
+                <div style="margin: 12px 0 6px; font-weight: 600; text-transform: uppercase; color: #374151;">@grp.Key</div>
+                @foreach (var f in grp.Value)
+                {
+                    <div class="file">
+                        <div><a href="/Docs?file=@Uri.EscapeDataString(f.RelativePath)">@f.Title</a></div>
+                        <div class="path">@f.RelativePath</div>
+                    </div>
+                }
             }
         </aside>
         <main class="content">
