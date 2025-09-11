@@ -233,6 +233,69 @@ console.log(`Memory usage: ${stats.estimatedMemoryUsage} bytes`);
 - Optional data validation for data integrity
 - Configurable cleanup policies
 
+### ToppledManager
+
+**Location:** `src/systems/ToppledManager.ts`
+
+Manages the physics and animation of obstacles that have been toppled by the player. Handles the complete lifecycle from impact through toppling animation to eventual despawn, including collision blocking and visual effects.
+
+#### Key Methods
+
+```typescript
+class ToppledManager {
+  constructor(config: ToppledManagerConfig)
+  constructor(scene: Phaser.Scene, animGroup: Phaser.GameObjects.Group, blockGroup?: Phaser.GameObjects.Group, groundY?: number) // deprecated
+  addFromFalling(obstacle: Phaser.GameObjects.Sprite, playerX: number): void
+  update(deltaMs: number): void
+  clear(): void
+}
+```
+
+#### Animation Phases
+
+1. **Impact Phase**: Initial knockback and spin when obstacle is hit
+2. **Falling Phase**: Physics-based falling with gravity and air resistance
+3. **Toppling Phase**: Smooth rotation and sliding animation using easing
+4. **Settled Phase**: Collision blocking and despawn timing
+
+#### Usage Example
+
+```typescript
+// Using configuration object (recommended)
+const manager = new ToppledManager({
+  scene: this,
+  animGroup: this.toppledAnimGroup,
+  blockGroup: this.collisionGroup,
+  groundY: 400
+});
+
+// Legacy constructor (deprecated)
+const manager = new ToppledManager(scene, animGroup, blockGroup, groundY);
+
+// Add a toppled obstacle
+manager.addFromFalling(obstacleSprite, player.x);
+
+// Update animations each frame
+manager.update(game.loop.delta);
+```
+
+#### Configuration Options
+
+- **`scene`**: The Phaser scene this manager belongs to
+- **`animGroup`**: Group for animation sprites during toppling
+- **`blockGroup`**: Group for collision-blocking sprites (optional, defaults to animGroup)
+- **`groundY`**: Y position of the ground for collision detection (optional)
+
+#### Key Features
+
+- Multi-phase animation system with physics-based transitions
+- Directional toppling based on player position relative to obstacle
+- Automatic capacity management with oldest entry eviction
+- Collision blocking during animation to prevent unfair re-hits
+- Smooth cubic ease-out animations for natural movement
+- Memory-efficient with configurable maximum active entries
+- Comprehensive error handling for optional operations
+
 ## Configuration
 
 ### Game Configuration

@@ -111,6 +111,8 @@ export class MainScene extends Phaser.Scene {
   private clientStartUtc?: string
   private sessionBuffer = new SessionEventsBuffer()
   private moveBufferTimer: number = 0
+  private collisionPushTimer: number = 0
+  private readonly COLLISION_PUSH_COOLDOWN = 200 // ms between collision pushes
   // Ambient snow bursts during gameplay
   private snowDots: Phaser.GameObjects.Rectangle[] = []
   private snowTweens: Phaser.Tweens.Tween[] = []
@@ -328,6 +330,7 @@ export class MainScene extends Phaser.Scene {
     // Handle invulnerability timer
     if (this.invulnerable) {
       this.invulnerableTimer -= delta
+      this.collisionPushTimer -= delta
       this.hud.setShield(true, this.invulnerableTimer / 1000)
       if (this.invulnerableTimer <= 0) {
         this.invulnerable = false
@@ -350,6 +353,11 @@ export class MainScene extends Phaser.Scene {
     if (this.moveBufferTimer >= 100) {
       this.sessionBuffer.pushMove(time - this.gameStartTime, this.player.x)
       this.moveBufferTimer = 0
+    }
+
+    // Update collision push cooldown
+    if (this.collisionPushTimer > 0) {
+      this.collisionPushTimer -= delta
     }
 
     if (!this.isGameOver) {
@@ -624,8 +632,20 @@ export class MainScene extends Phaser.Scene {
     // Settled trees: resolve overlap without damage
     collideObstacles(this.player, this.toppledBlocking, (obs) => {
       if (registered) return; registered = true;
-      const o:any = obs as any; const dir = (this.player.x >= o.x) ? 1 : -1;
-      const push = 16 * dir; this.player.x += push;
+      // Only push if enough time has passed since last collision push
+      if (this.collisionPushTimer <= 0) {
+        const o:any = obs as any; const dir = (this.player.x >= o.x) ? 1 : -1;
+        // Apply gentle push using physics instead of instant teleport
+        const pushForce = 8 * dir;
+        const playerBody = (this.player as any).body;
+        if (playerBody) {
+          playerBody.setVelocityX(playerBody.velocity?.x + pushForce);
+        } else {
+          // Fallback for non-physics objects
+          this.player.x += pushForce;
+        }
+        this.collisionPushTimer = this.COLLISION_PUSH_COOLDOWN;
+      }
       // No damage on settled trees
     })
   }
@@ -744,10 +764,13 @@ export class MainScene extends Phaser.Scene {
       this.hitFxRestorer.remove(false)
       this.hitFxRestorer = undefined
     }
-    const prev = this.time.timeScale
+    const originalTimeScale = this.time.timeScale
     this.time.timeScale = 0.85
     this.hitFxRestorer = this.time.delayedCall(100, () => {
-      this.time.timeScale = prev
+      // Only restore if no newer hit effect has taken over
+      if (this.hitFxRestorer && this.time.timeScale === 0.85) {
+        this.time.timeScale = originalTimeScale
+      }
       this.hitFxRestorer = undefined
     })
 

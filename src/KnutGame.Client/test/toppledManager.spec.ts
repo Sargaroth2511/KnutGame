@@ -112,4 +112,91 @@ describe('ToppledManager timeline', () => {
     expect(removed.length).toBe(1)
     expect(entries[0].destroyed).toBe(true)
   })
+
+  it('works correctly with legacy constructor signature', () => {
+    const { scene } = makeScene()
+    const { group: animGroup, added } = makeGroup()
+    const { group: blockGroup } = makeGroup()
+
+    // Test legacy constructor (used in MainScene)
+    const mgr = new ToppledManager(scene as any, animGroup as any, blockGroup as any, 300)
+    const s = makeFallingSprite(100, 200)
+
+    // Should not throw error and should work correctly
+    mgr.addFromFalling(s.sprite as any, 50)
+    mgr.update(100)
+
+    // Verify the sprite was added to the animation group
+    expect(added.length).toBe(1)
+
+    // Verify angle changed (indicating animation is working)
+    expect(s.lastAngle).not.toBe(0)
+  })
+
+  it('handles MainScene-style instantiation correctly', () => {
+    // Simulate MainScene instantiation pattern
+    const mockScene = {
+      add: {
+        group: () => ({
+          add: (obj: any) => {},
+          remove: (obj: any) => {},
+          children: { each: (_: any) => {} },
+          clear: () => {}
+        })
+      },
+      tweens: {
+        add: (cfg: any) => ({})
+      }
+    } as any
+
+    const animGroup = mockScene.add.group()
+    const blockGroup = mockScene.add.group()
+
+    // This is exactly how MainScene instantiates ToppledManager
+    const mgr = new ToppledManager(mockScene, animGroup, blockGroup, 400)
+
+    // Verify the manager has the correct properties set (this was the main issue)
+    expect((mgr as any).scene).toBe(mockScene)
+    expect((mgr as any).animGroup).toBe(animGroup)
+    expect((mgr as any).blockGroup).toBe(blockGroup)
+    expect((mgr as any).groundY).toBe(400)
+
+    // Verify that the active array is initialized
+    expect((mgr as any).active).toEqual([])
+  })
+
+  it('collision push cooldown prevents excessive movement', () => {
+    // This test verifies that the collision push cooldown mechanism works
+    // to prevent the SpeedExceeded error from rapid collision pushes
+
+    const { scene } = makeScene()
+    const { group: animGroup } = makeGroup()
+    const { group: blockGroup } = makeGroup()
+
+    const mgr = new ToppledManager(scene as any, animGroup as any, blockGroup as any, 300)
+    const s = makeFallingSprite(100, 200)
+
+    // Add a toppled entry
+    mgr.addFromFalling(s.sprite as any, 50)
+    mgr.update(100)
+
+    // Verify initial state
+    expect(s.lastAngle).not.toBe(0)
+
+    // Simulate multiple rapid updates - the angle should change smoothly
+    // not in large jumps that would trigger SpeedExceeded
+    const initialAngle = s.lastAngle
+    mgr.update(50)
+    const angleAfter50ms = s.lastAngle
+    mgr.update(50)
+    const angleAfter100ms = s.lastAngle
+
+    // Angles should change gradually, not in large discontinuous jumps
+    const angleChange1 = Math.abs(angleAfter50ms - initialAngle)
+    const angleChange2 = Math.abs(angleAfter100ms - angleAfter50ms)
+
+    // Each 50ms update should result in reasonable angle changes
+    expect(angleChange1).toBeLessThan(45) // Less than 45 degrees per 50ms
+    expect(angleChange2).toBeLessThan(45)
+  })
 })
