@@ -1,27 +1,26 @@
-# Visual Studio
-.vs/
-*.user
-*.suo
-*.tmp
-
 # Build outputs
 bin/
 obj/
+publish/
 *.dll
 *.exe
 *.pdb
+*.deps.json
+*.runtimeconfig.json
+*.staticwebassets.endpoints.json
 
 # Node modules
 node_modules/
 
-# Built client manifest (prefer generating in CI)
-src/KnutGame.Server/wwwroot/game/manifest.json
-src/KnutGame.Server/wwwroot/game/.vite/
-src/KnutGame.Server/wwwroot/game/assets/
+# Built client assets (all files in these directories)
+src/KnutGame.Server/wwwroot/game/
+src/KnutGame.Server/wwwroot/api-docs/
+src/KnutGame.Server/wwwroot/developer_guide.html
+src/KnutGame.Server/wwwroot/favicon.ico
 
-# Built client manifest (prefer generating in CI)
-src/KnutGame.Server/wwwroot/game/manifest.json
-src/KnutGame.Server/wwwroot/game/.vite/
+# Compressed files (generated during build)
+*.br
+*.gz
 
 # Logs
 logs
@@ -40,6 +39,10 @@ lerna-debug.log*
 # IDE
 .vscode/
 .idea/
+.vs/
+*.user
+*.suo
+*.tmp
 
 # OS
 .DS_Store
