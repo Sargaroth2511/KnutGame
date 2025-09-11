@@ -201,10 +201,10 @@ class GameOverScreen extends HudElement {
   private gameOverMsgBg?: Phaser.GameObjects.Rectangle
 
   /**
-   * Shows the game over screen with restart and documentation buttons
-   * @returns Object containing the restart and docs buttons for event handling
+   * Shows the game over screen with restart button
+   * @returns Object containing the restart button for event handling
    */
-  showGameOver(): { restartButton: Phaser.GameObjects.Text, docsButton: Phaser.GameObjects.Text } {
+  showGameOver(): { restartButton: Phaser.GameObjects.Text } {
     // Main game over text
     this.gameOverText = this.scene.add.text(
       this.camera.width / 2,
@@ -228,35 +228,7 @@ class GameOverScreen extends HudElement {
       this.createTextStyle('#ffffff')
     ).setOrigin(0.5).setDepth(1000).setInteractive()
 
-    // Documentation button
-    const docsButton = this.scene.add.text(
-      this.camera.width / 2,
-      this.camera.height / 2 + 70,
-      '📚 View Documentation',
-      {
-        fontSize: '18px',
-        color: '#3498db',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2,
-        stroke: '#ffffff',
-        strokeThickness: 2
-      }
-    ).setOrigin(0.5).setDepth(1000).setInteractive()
-
-    // Add hover effects for documentation button
-    docsButton.on('pointerover', () => {
-      docsButton.setColor('#2980b9')
-      docsButton.setScale(1.05)
-    })
-    docsButton.on('pointerout', () => {
-      docsButton.setColor('#3498db')
-      docsButton.setScale(1.0)
-    })
-    docsButton.on('pointerdown', () => {
-      window.open('/developer_guide.html', '_blank')
-    })
-
-    return { restartButton: this.restartButton, docsButton }
+    return { restartButton: this.restartButton }
   }
 
   /**
@@ -414,30 +386,10 @@ class GreetingScreen extends HudElement {
       }
     ).setOrigin(0.5, 0).setDepth(1001).setInteractive()
 
-    // Documentation button
-    const docsButton = this.scene.add.text(
-      this.camera.width / 2 + 80,
-      y + 120,
-      '📚 Docs',
-      {
-        fontSize: '14px',
-        color: '#059669',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2
-      }
-    ).setOrigin(0.5, 0).setDepth(1001).setInteractive()
-
     // Event handlers
     this.greetingClose.on('pointerdown', () => {
       this.clearGreeting()
       onClose?.()
-    })
-
-    // Documentation button interactions
-    docsButton.on('pointerover', () => docsButton.setColor('#047857'))
-    docsButton.on('pointerout', () => docsButton.setColor('#059669'))
-    docsButton.on('pointerdown', () => {
-      window.open('/developer_guide.html', '_blank')
     })
 
     // Fade in animation
@@ -445,10 +397,9 @@ class GreetingScreen extends HudElement {
     this.greetingTitle.setAlpha(0)
     this.greetingMsg.setAlpha(0)
     this.greetingClose.setAlpha(0)
-    docsButton.setAlpha(0)
 
     this.scene.tweens.add({
-      targets: [this.greetingBg, this.greetingTitle, this.greetingMsg, this.greetingClose, docsButton],
+      targets: [this.greetingBg, this.greetingTitle, this.greetingMsg, this.greetingClose],
       alpha: 1,
       duration: 180
     })
@@ -650,7 +601,7 @@ class LoadingEffects extends HudElement {
  * hud.setTimer(45.2)
  *
  * // Show game over screen
- * const { restartButton, docsButton } = hud.showGameOver()
+ * const { restartButton } = hud.showGameOver()
  * restartButton.on('pointerdown', () => game.restart())
  *
  * // Show loading effects
@@ -750,10 +701,10 @@ export class Hud {
   // --- Game Over Screen Methods (Delegated to GameOverScreen) ---
 
   /**
-   * Shows the game over screen with restart and documentation buttons
-   * @returns Object containing the restart and docs buttons for event handling
+   * Shows the game over screen with restart button
+   * @returns Object containing the restart button for event handling
    */
-  showGameOver(): { restartButton: Phaser.GameObjects.Text, docsButton: Phaser.GameObjects.Text } {
+  showGameOver(): { restartButton: Phaser.GameObjects.Text } {
     return this.gameOverScreen.showGameOver()
   }
 
