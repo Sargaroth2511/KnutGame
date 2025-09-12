@@ -78,16 +78,16 @@ ssh -p $PORT -i ~/.ssh/id_ed25519 $USER@$HOST "mkdir -p /home/johannes/KnutGame/
 
 # Copy client build to production wwwroot
 echo "Copying client files..."
-rsync -avz --no-owner --no-group --chmod=ugo=rwX --temp-dir=/tmp -e "ssh -p $PORT -i ~/.ssh/id_ed25519" src/KnutGame.Server/wwwroot/game/* $USER@$HOST:/home/johannes/KnutGame/wwwroot/game/
+rsync -avz --no-owner --no-group --no-times --chmod=ugo=rwX --temp-dir=/tmp -e "ssh -p $PORT -i ~/.ssh/id_ed25519" src/KnutGame.Server/wwwroot/game/* $USER@$HOST:/home/johannes/KnutGame/wwwroot/game/
 
 # Copy server publish to production directory
 echo "Copying server binaries..."
-rsync -avz --no-owner --no-group --chmod=ugo=rwX --temp-dir=/tmp -e "ssh -p $PORT -i ~/.ssh/id_ed25519" src/KnutGame.Server/publish/* $USER@$HOST:/home/johannes/KnutGame/publish/
+rsync -avz --no-owner --no-group --no-times --chmod=ugo=rwX --temp-dir=/tmp -e "ssh -p $PORT -i ~/.ssh/id_ed25519" src/KnutGame.Server/publish/* $USER@$HOST:/home/johannes/KnutGame/publish/
 
 # Copy database if exists
 if [ -f src/KnutGame.Server/knutgame.db ]; then
   echo "Copying database..."
-  rsync -avz --no-owner --no-group --chmod=ugo=rwX --temp-dir=/tmp -e "ssh -p $PORT -i ~/.ssh/id_ed25519" src/KnutGame.Server/knutgame.db $USER@$HOST:/home/johannes/KnutGame/publish/knutgame.db
+  rsync -avz --no-owner --no-group --no-times --chmod=ugo=rwX --temp-dir=/tmp -e "ssh -p $PORT -i ~/.ssh/id_ed25519" src/KnutGame.Server/knutgame.db $USER@$HOST:/home/johannes/KnutGame/publish/knutgame.db
 fi
 
 if [ "$SKIP_REMOTE_SETUP" = false ]; then
