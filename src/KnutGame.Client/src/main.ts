@@ -31,8 +31,6 @@ function init() {
     type: Phaser.AUTO,
     width: gameWidth,
     height: gameHeight,
-    // Render at device pixel ratio (capped for performance) for crisper text
-    resolution: Math.min((window.devicePixelRatio || 1), 2),
     parent: 'game-container',
     backgroundColor: '#000000', // Black background
     render: {

@@ -294,8 +294,6 @@ export class MainScene extends Phaser.Scene {
     // Handle canvas/viewport resize
     const onScaleResize = (gameSize: Phaser.Structs.Size) => {
       try {
-        const prevW = this.cameras.main.width
-        const prevH = this.cameras.main.height
         const newW = gameSize.width
         const newH = gameSize.height
         this.cameras.main.setSize(newW, newH)

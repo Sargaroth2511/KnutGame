@@ -67,6 +67,21 @@ abstract class HudElement {
   }
 
   /**
+   * Redraws an existing card container's graphics at a new position/size
+   */
+  protected redrawCard(container: Phaser.GameObjects.Container, x: number, y: number, w: number, h: number, radius = 10, fill = 0xffffff, alpha = 0.95): void {
+    const g = container.getAt(0) as Phaser.GameObjects.Graphics | undefined
+    if (!g) return
+    g.clear()
+    // Shadow
+    g.fillStyle(0x000000, 0.25)
+    g.fillRoundedRect(x - w / 2 + 3, y - h / 2 + 6, w, h, radius)
+    // Card
+    g.fillStyle(fill, alpha)
+    g.fillRoundedRect(x - w / 2, y - h / 2, w, h, radius)
+  }
+
+  /**
    * Creates a button with rounded background and label text
    */
   protected makeButton(label: string, centerX: number, centerY: number, onClick: () => void, opts?: { padding?: number; bg?: number; fg?: string }): Phaser.GameObjects.Container {
@@ -291,7 +306,7 @@ class GameOverScreen extends HudElement {
   private restartButton?: Phaser.GameObjects.Text
   private gameOverMsgTitle?: Phaser.GameObjects.Text
   private gameOverMsgText?: Phaser.GameObjects.Text
-  private gameOverMsgBg?: Phaser.GameObjects.Rectangle
+  private gameOverMsgBg?: Phaser.GameObjects.Container
   private gameOverMsgCard?: Phaser.GameObjects.Container
   private gameOverBtn?: Phaser.GameObjects.Container
 
@@ -400,7 +415,7 @@ class GameOverScreen extends HudElement {
     this.applyLetterSpacing(this.gameOverMsgText, 0.7)
 
     // Fade in
-    const targets: Phaser.GameObjects.GameObject[] = [this.gameOverMsgCard!, this.gameOverMsgTitle, this.gameOverMsgText]
+    const targets: Phaser.GameObjects.GameObject[] = [this.gameOverMsgBg!, this.gameOverMsgTitle, this.gameOverMsgText]
     targets.forEach(t => (t as any).setAlpha?.(0))
     this.scene.tweens.add({ targets, alpha: 1, duration: 180 })
   }

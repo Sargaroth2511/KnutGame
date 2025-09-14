@@ -113,7 +113,7 @@ export class BackgroundRenderer {
     const canvasWidth = scene.cameras.main.width;
     const canvasHeight = scene.cameras.main.height;
 
-    const cfg = this.getEffectiveConfig(canvasWidth, canvasHeight);
+    const cfg = this.getEffectiveConfig(canvasWidth);
 
     const graphics = scene.add.graphics();
     graphics.setDepth(-1000);
@@ -128,7 +128,7 @@ export class BackgroundRenderer {
   /**
    * Compute a responsive config based on canvas size to avoid overlaps on small screens.
    */
-  private getEffectiveConfig(canvasWidth: number, canvasHeight: number): BackgroundConfig {
+  private getEffectiveConfig(canvasWidth: number): BackgroundConfig {
     // Base against 640px width and clamp the scale between 0.55 and 1.0
     const scale = Math.max(0.55, Math.min(1.0, canvasWidth / 640));
     // Scale core dimensions
@@ -139,7 +139,6 @@ export class BackgroundRenderer {
     let windowWidth = Math.max(48, Math.round(this.config.windowWidth * scale));
     const windowHeight = Math.max(72, Math.round(this.config.windowHeight * scale));
     let windowColumns = this.config.windowColumns;
-    const windowRows = this.config.windowRows;
     const doorWidth = Math.max(80, Math.round(this.config.doorWidth * scale));
     const dashWidth = Math.max(28, Math.round(this.config.dashWidth * scale));
     const dashGap = Math.max(16, Math.round(this.config.dashGap * scale));
