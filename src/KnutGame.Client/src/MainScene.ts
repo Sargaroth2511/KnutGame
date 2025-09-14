@@ -105,6 +105,10 @@ export class MainScene extends Phaser.Scene {
   private coinSpawnTimer: number = 0
   private powerupSpawnTimer: number = 0
   private hud!: Hud
+  private bgGfx?: Phaser.GameObjects.Graphics
+  private bgBaseW: number = 0
+  private bgBaseH: number = 0
+  private playerYFrac: number = GROUND_Y_FRAC
 
   // Iteration 5: Server scoring
   private sessionId?: string
@@ -123,6 +127,7 @@ export class MainScene extends Phaser.Scene {
   private particlePool!: ParticlePool
   private lastHitObstacle?: Phaser.GameObjects.Sprite
   private lastHitSafeUntil: number = 0
+  private orientationPaused: boolean = false
 
   constructor() {
     super({ key: 'MainScene' })
@@ -144,8 +149,12 @@ export class MainScene extends Phaser.Scene {
   }
 
   create() {
-    // Draw full-screen skyscraper background with windows
-    drawSkyscraperBackground(this)
+    // Draw full-screen skyscraper background with windows and keep a handle for resize
+    this.bgGfx = drawSkyscraperBackground(this)
+    this.bgGfx.setPosition(0, 0)
+    this.bgGfx.setScrollFactor?.(0)
+    this.bgBaseW = this.cameras.main.width
+    this.bgBaseH = this.cameras.main.height
     if (!this.textures.exists('tree')) {
       console.warn('Tree sprite not found. Ensure file exists at src/KnutGame.Client/src/assets/obstacles/xmas_tree_1.png and rebuild the client.')
     }
@@ -180,6 +189,10 @@ export class MainScene extends Phaser.Scene {
     ;(this as any).player = this.player
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
     playerBody.setCollideWorldBounds(true)
+    // Keep a fractional Y anchor so we can restore to the ground line on resize
+    const camH = this.cameras.main.height
+    const playerYFrac = camH > 0 ? (this.initialPlayerY / camH) : GROUND_Y_FRAC
+    this.playerYFrac = playerYFrac
 
     // Set up input
     this.inputController = new InputController(this, this.player)
@@ -278,16 +291,66 @@ export class MainScene extends Phaser.Scene {
     };
     document.addEventListener('visibilitychange', onVisibility)
 
+    // Handle canvas/viewport resize
+    const onScaleResize = (gameSize: Phaser.Structs.Size) => {
+      try {
+        const prevW = this.cameras.main.width
+        const prevH = this.cameras.main.height
+        const newW = gameSize.width
+        const newH = gameSize.height
+        this.cameras.main.setSize(newW, newH)
+        this.physics.world.setBounds(0, 0, newW, newH)
+        // Scale background instead of redrawing to keep window lighting consistent
+        if (this.bgGfx && this.bgBaseW > 0 && this.bgBaseH > 0) {
+          this.bgGfx.setPosition(0, 0)
+          this.bgGfx.setScale(newW / this.bgBaseW, newH / this.bgBaseH)
+        }
+        // Reposition HUD
+        this.hud?.layout?.()
+        // Keep player X position exactly and Y anchored to ground line
+        const p: any = this.player as any
+        if (p) {
+          const yFrac = this.playerYFrac ?? GROUND_Y_FRAC
+          const oldX = p.x
+          p.x = Phaser.Math.Clamp(Math.round(oldX), 0, newW)
+          p.y = Phaser.Math.Clamp(Math.round(yFrac * newH), 0, newH)
+        }
+        // Update cached ground Y based on new height
+        this.groundY = this.cameras.main.height * GROUND_Y_FRAC
+
+        // Orientation handling: lock to portrait by pausing and showing overlay
+        const isLandscape = newW > newH
+        if (isLandscape) {
+          if (!this.orientationPaused) {
+            this.pauseGame()
+            this.orientationPaused = true
+          }
+          this.hud?.showRotateOverlay?.()
+        } else {
+          this.hud?.hideRotateOverlay?.()
+          if (this.orientationPaused) {
+            this.orientationPaused = false
+            this.resumeGame()
+          }
+        }
+      } catch (e) {
+        console.warn('Resize handling error:', e)
+      }
+    }
+    this.scale.on(Phaser.Scale.Events.RESIZE, onScaleResize)
+
     // Register cleanup on shutdown/destroy
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       document.removeEventListener('visibilitychange', onVisibility)
       this.inputController?.detach()
       this.particlePool?.destroy()
+      this.scale.off(Phaser.Scale.Events.RESIZE, onScaleResize)
     })
     this.events.once(Phaser.Scenes.Events.DESTROY, () => {
       document.removeEventListener('visibilitychange', onVisibility)
       this.inputController?.detach()
       this.particlePool?.destroy()
+      this.scale.off(Phaser.Scale.Events.RESIZE, onScaleResize)
     })
   }
 

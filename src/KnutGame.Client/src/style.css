@@ -14,9 +14,10 @@ body {
   touch-action: none;
 }
 
+/* Use dynamic viewport height to avoid mobile browser chrome issues */
 #app {
   width: 100%;
-  height: 100vh;
+  height: 100dvh; /* mobile-safe fullscreen */
   position: fixed;
   top: 0;
   left: 0;
@@ -27,6 +28,10 @@ body {
   align-items: center;
   z-index: 9999; /* Ensure game stays on top */
 }
+/* Fallback for browsers without 100dvh support */
+@supports not (height: 100dvh) {
+  #app { height: 100vh; }
+}
 
 #game-container {
   position: relative;
@@ -36,7 +41,8 @@ body {
   width: 100%;
   height: 100%;
   z-index: 10000; /* Game container on top */
-  background-color: #747bff;
+  /* Use black to avoid visible bands when canvas is centered */
+  background-color: #000000;
 }
 
 /* Game canvas container styling */

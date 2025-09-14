@@ -109,17 +109,75 @@ export class BackgroundRenderer {
    * Renders facade, windows, door, and street elements in proper layering order.
    * @param scene - The Phaser scene to draw the background on
    */
-  drawSkyscraperBackground(scene: Phaser.Scene): void {
+  drawSkyscraperBackground(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
     const canvasWidth = scene.cameras.main.width;
     const canvasHeight = scene.cameras.main.height;
+
+    const cfg = this.getEffectiveConfig(canvasWidth, canvasHeight);
 
     const graphics = scene.add.graphics();
     graphics.setDepth(-1000);
 
-    this.drawFacade(graphics, canvasWidth, canvasHeight);
-    this.drawWindows(graphics, canvasWidth, canvasHeight);
-    this.drawDoor(graphics, canvasWidth, canvasHeight);
-    this.drawStreet(graphics, canvasWidth, canvasHeight);
+    this.drawFacade(graphics, canvasWidth, canvasHeight, cfg);
+    this.drawWindows(graphics, canvasWidth, canvasHeight, cfg);
+    this.drawDoor(graphics, canvasWidth, canvasHeight, cfg);
+    this.drawStreet(graphics, canvasWidth, canvasHeight, cfg);
+    return graphics;
+  }
+
+  /**
+   * Compute a responsive config based on canvas size to avoid overlaps on small screens.
+   */
+  private getEffectiveConfig(canvasWidth: number, canvasHeight: number): BackgroundConfig {
+    // Base against 640px width and clamp the scale between 0.55 and 1.0
+    const scale = Math.max(0.55, Math.min(1.0, canvasWidth / 640));
+    // Scale core dimensions
+    let horizontalMargin = Math.round(this.config.horizontalMargin * scale);
+    const verticalMargin = Math.round(this.config.verticalMargin * scale);
+    const streetHeight = Math.max(60, Math.round(this.config.streetHeight * scale));
+    const groundFloorHeight = Math.max(90, Math.round(this.config.groundFloorHeight * scale));
+    let windowWidth = Math.max(48, Math.round(this.config.windowWidth * scale));
+    const windowHeight = Math.max(72, Math.round(this.config.windowHeight * scale));
+    let windowColumns = this.config.windowColumns;
+    const windowRows = this.config.windowRows;
+    const doorWidth = Math.max(80, Math.round(this.config.doorWidth * scale));
+    const dashWidth = Math.max(28, Math.round(this.config.dashWidth * scale));
+    const dashGap = Math.max(16, Math.round(this.config.dashGap * scale));
+
+    // Ensure columns fit without overlap. Reduce columns to 2 if needed.
+    const usableWidth = Math.max(1, canvasWidth - horizontalMargin * 2);
+    if (windowColumns > 1) {
+      const separation = usableWidth / (windowColumns - 1);
+      if (windowWidth > separation * 0.9) {
+        // Try shrinking width a bit more before dropping columns
+        windowWidth = Math.floor(separation * 0.85);
+      }
+      if (windowWidth > separation * 0.95 && windowColumns >= 3) {
+        windowColumns = 2;
+        // Recompute with two columns
+        const separation2 = usableWidth / (windowColumns - 1);
+        windowWidth = Math.floor(Math.min(windowWidth, separation2 * 0.8));
+      }
+    }
+
+    // If margins are too large relative to width, reduce them to keep content centered
+    if (horizontalMargin * 2 + windowWidth > canvasWidth) {
+      horizontalMargin = Math.max(12, Math.floor((canvasWidth - windowWidth) / 4));
+    }
+
+    return {
+      ...this.config,
+      horizontalMargin,
+      verticalMargin,
+      streetHeight,
+      groundFloorHeight,
+      windowWidth,
+      windowHeight,
+      windowColumns,
+      doorWidth,
+      dashWidth,
+      dashGap,
+    };
   }
 
   /**
@@ -128,8 +186,8 @@ export class BackgroundRenderer {
    * @param canvasWidth - Width of the canvas
    * @param canvasHeight - Height of the canvas
    */
-  private drawFacade(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number): void {
-    graphics.fillStyle(this.config.facadeColor, 1);
+  private drawFacade(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number, cfg: BackgroundConfig): void {
+    graphics.fillStyle(cfg.facadeColor, 1);
     graphics.fillRect(0, 0, canvasWidth, canvasHeight);
   }
 
@@ -139,30 +197,30 @@ export class BackgroundRenderer {
    * @param canvasWidth - Width of the canvas
    * @param canvasHeight - Height of the canvas
    */
-  private drawWindows(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number): void {
-    const usableWidth = Math.max(1, canvasWidth - this.config.horizontalMargin * 2);
-    const windowsTopY = Math.max(this.config.verticalMargin, this.config.verticalMargin + this.config.groundFloorHeight - this.config.windowLift);
-    const windowsBottomY = canvasHeight - this.config.streetHeight - this.config.verticalMargin - this.config.bottomWindowGap;
+  private drawWindows(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number, cfg: BackgroundConfig): void {
+    const usableWidth = Math.max(1, canvasWidth - cfg.horizontalMargin * 2);
+    const windowsTopY = Math.max(cfg.verticalMargin, cfg.verticalMargin + cfg.groundFloorHeight - cfg.windowLift);
+    const windowsBottomY = canvasHeight - cfg.streetHeight - cfg.verticalMargin - cfg.bottomWindowGap;
     const windowsUsableHeight = Math.max(1, windowsBottomY - windowsTopY);
 
-    for (let rowIndex = 0; rowIndex < this.config.windowRows; rowIndex++) {
-      const centerY = windowsTopY + (rowIndex / (this.config.windowRows - 1)) * windowsUsableHeight;
-      const windowY = Math.round(centerY - this.config.windowHeight / 2);
+    for (let rowIndex = 0; rowIndex < cfg.windowRows; rowIndex++) {
+      const centerY = windowsTopY + (rowIndex / Math.max(1, (cfg.windowRows - 1))) * windowsUsableHeight;
+      const windowY = Math.round(centerY - cfg.windowHeight / 2);
 
-      for (let columnIndex = 0; columnIndex < this.config.windowColumns; columnIndex++) {
-        let centerX = this.config.horizontalMargin + (columnIndex / (this.config.windowColumns - 1)) * usableWidth;
+      for (let columnIndex = 0; columnIndex < cfg.windowColumns; columnIndex++) {
+        let centerX = cfg.horizontalMargin + (columnIndex / Math.max(1, (cfg.windowColumns - 1))) * usableWidth;
         const horizontalShift = canvasWidth * 0.05;
-        if (columnIndex === 0) centerX = Math.min(centerX + horizontalShift, canvasWidth - this.config.horizontalMargin - this.config.windowWidth / 2);
-        if (columnIndex === this.config.windowColumns - 1) centerX = Math.max(centerX - horizontalShift, this.config.horizontalMargin + this.config.windowWidth / 2);
+        if (columnIndex === 0) centerX = Math.min(centerX + horizontalShift, canvasWidth - cfg.horizontalMargin - cfg.windowWidth / 2);
+        if (columnIndex === cfg.windowColumns - 1) centerX = Math.max(centerX - horizontalShift, cfg.horizontalMargin + cfg.windowWidth / 2);
 
-        const windowX = Math.round(centerX - this.config.windowWidth / 2);
+        const windowX = Math.round(centerX - cfg.windowWidth / 2);
 
         // Skip the bottom-row middle window (behind the door)
-        if (rowIndex === this.config.windowRows - 1 && columnIndex === Math.floor(this.config.windowColumns / 2)) {
+        if (rowIndex === cfg.windowRows - 1 && columnIndex === Math.floor(cfg.windowColumns / 2)) {
           continue;
         }
 
-        this.drawWindow(graphics, windowX, windowY, rowIndex);
+        this.drawWindow(graphics, windowX, windowY, rowIndex, cfg);
       }
     }
   }
@@ -174,25 +232,25 @@ export class BackgroundRenderer {
    * @param windowY - Y position of the window
    * @param rowIndex - Row index (used for lighting probability calculation)
    */
-  private drawWindow(graphics: Phaser.GameObjects.Graphics, windowX: number, windowY: number, rowIndex: number): void {
+  private drawWindow(graphics: Phaser.GameObjects.Graphics, windowX: number, windowY: number, rowIndex: number, cfg: BackgroundConfig): void {
     // Probability a window is lit (more at top floors)
-    const lightingProbability = 0.3 + 0.5 * (1 - rowIndex / (this.config.windowRows - 1));
+    const lightingProbability = 0.3 + 0.5 * (1 - rowIndex / Math.max(1, (cfg.windowRows - 1)));
     const isLit = Math.random() < lightingProbability;
-    const availableColors = isLit ? this.config.litWindowColors : this.config.dimWindowColors;
+    const availableColors = isLit ? cfg.litWindowColors : cfg.dimWindowColors;
     const selectedColor = availableColors[Math.floor(Math.random() * availableColors.length)];
 
     // Frame
-    graphics.fillStyle(this.config.windowFrameColor, 1);
-    graphics.fillRect(windowX - 3, windowY - 3, this.config.windowWidth + 6, this.config.windowHeight + 6);
+    graphics.fillStyle(cfg.windowFrameColor, 1);
+    graphics.fillRect(windowX - 3, windowY - 3, cfg.windowWidth + 6, cfg.windowHeight + 6);
 
     // Pane
     graphics.fillStyle(selectedColor, 1);
-    graphics.fillRect(windowX, windowY, this.config.windowWidth, this.config.windowHeight);
+    graphics.fillRect(windowX, windowY, cfg.windowWidth, cfg.windowHeight);
 
     // Mullions
-    graphics.fillStyle(this.config.windowMullionColor, 0.35);
-    graphics.fillRect(windowX + this.config.windowWidth / 2 - 2, windowY + 6, 4, this.config.windowHeight - 12);
-    graphics.fillRect(windowX + 6, windowY + this.config.windowHeight / 2 - 2, this.config.windowWidth - 12, 4);
+    graphics.fillStyle(cfg.windowMullionColor, 0.35);
+    graphics.fillRect(windowX + cfg.windowWidth / 2 - 2, windowY + 6, 4, cfg.windowHeight - 12);
+    graphics.fillRect(windowX + 6, windowY + cfg.windowHeight / 2 - 2, cfg.windowWidth - 12, 4);
   }
 
   /**
@@ -201,22 +259,22 @@ export class BackgroundRenderer {
    * @param canvasWidth - Width of the canvas
    * @param canvasHeight - Height of the canvas
    */
-  private drawDoor(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number): void {
-    const calculatedDoorHeight = this.config.groundFloorHeight - 16;
-    const doorX = Math.round(canvasWidth / 2 - this.config.doorWidth / 2);
-    const doorY = Math.round(canvasHeight - this.config.streetHeight - calculatedDoorHeight);
+  private drawDoor(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number, cfg: BackgroundConfig): void {
+    const calculatedDoorHeight = cfg.groundFloorHeight - 16;
+    const doorX = Math.round(canvasWidth / 2 - cfg.doorWidth / 2);
+    const doorY = Math.round(canvasHeight - cfg.streetHeight - calculatedDoorHeight);
 
     // Door frame
-    graphics.fillStyle(this.config.doorFrameColor, 1);
-    graphics.fillRect(doorX - 6, doorY - 6, this.config.doorWidth + 12, calculatedDoorHeight + 12);
+    graphics.fillStyle(cfg.doorFrameColor, 1);
+    graphics.fillRect(doorX - 6, doorY - 6, cfg.doorWidth + 12, calculatedDoorHeight + 12);
 
     // Door panel
-    graphics.fillStyle(this.config.doorPanelColor, 1);
-    graphics.fillRect(doorX, doorY, this.config.doorWidth, calculatedDoorHeight);
+    graphics.fillStyle(cfg.doorPanelColor, 1);
+    graphics.fillRect(doorX, doorY, cfg.doorWidth, calculatedDoorHeight);
 
     // Door details: vertical split
-    graphics.fillStyle(this.config.doorDetailColor, 0.6);
-    graphics.fillRect(doorX + this.config.doorWidth / 2 - 2, doorY + 8, 4, calculatedDoorHeight - 16);
+    graphics.fillStyle(cfg.doorDetailColor, 0.6);
+    graphics.fillRect(doorX + cfg.doorWidth / 2 - 2, doorY + 8, 4, calculatedDoorHeight - 16);
   }
 
   /**
@@ -225,22 +283,22 @@ export class BackgroundRenderer {
    * @param canvasWidth - Width of the canvas
    * @param canvasHeight - Height of the canvas
    */
-  private drawStreet(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number): void {
-    const streetY = canvasHeight - this.config.streetHeight;
+  private drawStreet(graphics: Phaser.GameObjects.Graphics, canvasWidth: number, canvasHeight: number, cfg: BackgroundConfig): void {
+    const streetY = canvasHeight - cfg.streetHeight;
 
     // Curb line
-    graphics.fillStyle(this.config.curbColor, 1);
+    graphics.fillStyle(cfg.curbColor, 1);
     graphics.fillRect(0, streetY - 4, canvasWidth, 4);
 
     // Asphalt
-    graphics.fillStyle(this.config.asphaltColor, 1);
-    graphics.fillRect(0, streetY, canvasWidth, this.config.streetHeight);
+    graphics.fillStyle(cfg.asphaltColor, 1);
+    graphics.fillRect(0, streetY, canvasWidth, cfg.streetHeight);
 
     // Lane markings (dashed)
-    graphics.fillStyle(this.config.laneMarkingColor, 0.4);
-    const laneCenterY = streetY + Math.floor(this.config.streetHeight / 2) - 2;
-    for (let dashPosition = 0; dashPosition < canvasWidth; dashPosition += this.config.dashWidth + this.config.dashGap) {
-      graphics.fillRect(dashPosition, laneCenterY, this.config.dashWidth, 4);
+    graphics.fillStyle(cfg.laneMarkingColor, 0.4);
+    const laneCenterY = streetY + Math.floor(cfg.streetHeight / 2) - 2;
+    for (let dashPosition = 0; dashPosition < canvasWidth; dashPosition += cfg.dashWidth + cfg.dashGap) {
+      graphics.fillRect(dashPosition, laneCenterY, cfg.dashWidth, 4);
     }
   }
 }
@@ -251,7 +309,7 @@ export class BackgroundRenderer {
  * @deprecated Use BackgroundRenderer.drawSkyscraperBackground() instead for better control
  * @param scene - The Phaser scene to draw the background on
  */
-export function drawSkyscraperBackground(scene: Phaser.Scene): void {
+export function drawSkyscraperBackground(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
   const renderer = new BackgroundRenderer();
-  renderer.drawSkyscraperBackground(scene);
+  return renderer.drawSkyscraperBackground(scene);
 }

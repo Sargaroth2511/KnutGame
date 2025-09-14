@@ -7,6 +7,7 @@ import Phaser from 'phaser'
 abstract class HudElement {
   protected readonly scene: Phaser.Scene
   protected readonly camera: Phaser.Cameras.Scene2D.Camera
+  protected readonly dpr: number
 
   /**
    * Creates a new HUD element
@@ -15,6 +16,7 @@ abstract class HudElement {
   constructor(scene: Phaser.Scene) {
     this.scene = scene
     this.camera = scene.cameras.main
+    this.dpr = Math.min((globalThis.devicePixelRatio || 1), 2)
   }
 
   /**
@@ -28,9 +30,85 @@ abstract class HudElement {
       fontSize,
       color,
       fontFamily: 'Arial, sans-serif',
-      resolution: 2,
+      resolution: this.dpr,
       stroke: '#000000',
-      strokeThickness: 2
+      strokeThickness: 2 * this.dpr
+    }
+  }
+
+  /**
+   * Plain text style without stroke or shadow for maximum clarity
+   */
+  protected createPlainTextStyle(color: string, fontSize: string = '16px', fontStyle?: string): Phaser.Types.GameObjects.Text.TextStyle {
+    return {
+      fontSize,
+      color,
+      fontFamily: 'Arial, sans-serif',
+      fontStyle,
+      resolution: this.dpr
+    }
+  }
+
+  /**
+   * Creates a rounded rectangle card with subtle drop shadow
+   */
+  protected makeCard(x: number, y: number, w: number, h: number, radius = 10, fill = 0xffffff, alpha = 0.95): Phaser.GameObjects.Container {
+    const g = this.scene.add.graphics()
+    g.setDepth(1000)
+    // Shadow
+    g.fillStyle(0x000000, 0.25)
+    g.fillRoundedRect(x - w / 2 + 3, y - h / 2 + 6, w, h, radius)
+    // Card
+    g.fillStyle(fill, alpha)
+    g.fillRoundedRect(x - w / 2, y - h / 2, w, h, radius)
+    const c = this.scene.add.container(0, 0, [g])
+    c.setDepth(1000)
+    return c
+  }
+
+  /**
+   * Creates a button with rounded background and label text
+   */
+  protected makeButton(label: string, centerX: number, centerY: number, onClick: () => void, opts?: { padding?: number; bg?: number; fg?: string }): Phaser.GameObjects.Container {
+    const padding = opts?.padding ?? 12
+    const bgColor = opts?.bg ?? 0x1a1a1a
+    const fgColor = opts?.fg ?? '#ffffff'
+    const txt = this.scene.add.text(0, 0, label, this.createTextStyle(fgColor, '18px')).setOrigin(0.5)
+    this.applyLetterSpacing(txt, 0.9)
+    txt.setShadow(0, 2, '#000000', 4, true, true)
+    const w = Math.ceil(txt.width + padding * 2)
+    const h = Math.ceil(txt.height + padding)
+    const g = this.scene.add.graphics()
+    // Shadow
+    g.fillStyle(0x000000, 0.3)
+    g.fillRoundedRect(centerX - w / 2 + 2, centerY - h / 2 + 4, w, h, 8)
+    // Button
+    g.fillStyle(bgColor, 0.95)
+    g.fillRoundedRect(centerX - w / 2, centerY - h / 2, w, h, 8)
+    const container = this.scene.add.container(0, 0, [g, txt])
+    container.setDepth(1001)
+    txt.setPosition(centerX, centerY)
+    // Interactivity on the button area
+    const hit = this.scene.add.rectangle(centerX, centerY, w, h, 0x000000, 0)
+    hit.setDepth(1002)
+    hit.setInteractive({ useHandCursor: true })
+    hit.on('pointerover', () => g.setAlpha(1))
+    hit.on('pointerout', () => g.setAlpha(0.98))
+    hit.on('pointerdown', () => { g.setAlpha(0.9); onClick() })
+    container.add(hit)
+    return container
+  }
+
+  /**
+   * Applies letter spacing to a text object with best-effort fallbacks.
+   */
+  protected applyLetterSpacing(t: Phaser.GameObjects.Text, px = 0.5): void {
+    const anyT = t as any
+    if (typeof anyT.setLetterSpacing === 'function') {
+      anyT.setLetterSpacing(px)
+    } else if (anyT.style) {
+      anyT.style.letterSpacing = px
+      anyT.updateText?.()
     }
   }
 
@@ -88,6 +166,21 @@ class HudDisplay extends HudElement {
     this.bestText = this.scene.add.text(this.camera.width - 10, 70, 'Best: 0', this.createTextStyle('#ffffff'))
     this.bestText.setOrigin(1, 0)
     this.bestText.setDepth(1000)
+  }
+
+  /**
+   * Repositions HUD elements based on current camera size (responsive layout)
+   */
+  layout(): void {
+    // Left-aligned
+    this.livesText.setPosition(10, 40)
+    this.timerText.setPosition(10, 70)
+    // Right-aligned
+    const right = this.camera.width - 10
+    this.scoreText.setPosition(right, 10)
+    this.multiplierText.setPosition(right, 40)
+    this.bestText.setPosition(right, 70)
+    if (this.shieldText) this.shieldText.setPosition(right, 100)
   }
 
   /**
@@ -199,36 +292,80 @@ class GameOverScreen extends HudElement {
   private gameOverMsgTitle?: Phaser.GameObjects.Text
   private gameOverMsgText?: Phaser.GameObjects.Text
   private gameOverMsgBg?: Phaser.GameObjects.Rectangle
+  private gameOverMsgCard?: Phaser.GameObjects.Container
+  private gameOverBtn?: Phaser.GameObjects.Container
 
   /**
    * Shows the game over screen with restart button
    * @returns Object containing the restart button for event handling
    */
   showGameOver(): { restartButton: Phaser.GameObjects.Text } {
-    // Main game over text
-    this.gameOverText = this.scene.add.text(
-      this.camera.width / 2,
-      this.camera.height / 2 - 50,
-      'GAME OVER',
-      {
-        fontSize: '48px',
-        color: '#ff0000',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2,
-        stroke: '#000000',
-        strokeThickness: 4
-      }
-    ).setOrigin(0.5).setDepth(1000)
+    const centerX = this.camera.width / 2
+    const centerY = this.camera.height / 2
 
-    // Restart button
-    this.restartButton = this.scene.add.text(
-      this.camera.width / 2,
-      this.camera.height / 2 + 30,
-      'Click to Restart',
-      this.createTextStyle('#ffffff')
-    ).setOrigin(0.5).setDepth(1000).setInteractive()
+    // Title with shadow and higher resolution
+    this.gameOverText = this.scene.add.text(
+      centerX,
+      centerY - 60,
+      'GAME OVER',
+      this.createTextStyle('#ff5555', '48px')
+    ).setOrigin(0.5)
+     .setDepth(1001)
+    this.gameOverText.setShadow(0, 3, '#000000', 6, true, true)
+    this.applyLetterSpacing(this.gameOverText, 1.2)
+
+    // Button with rounded background
+    this.gameOverBtn = this.makeButton('Restart', centerX, centerY + 20, () => {
+      // Click handled by scene wiring; expose text shim for backward compatibility
+      (this.restartButton as any)?.emit?.('pointerdown')
+    }, { bg: 0x272a34, fg: '#ffffff', padding: 14 })
+
+    // Back-compat: expose a Text-like interactive object for existing scene code
+    this.restartButton = this.scene.add.text(centerX, centerY + 20, 'Restart', this.createTextStyle('#ffffff', '1px'))
+      .setOrigin(0.5)
+      .setDepth(1002)
+      .setInteractive()
+      .setVisible(false)
 
     return { restartButton: this.restartButton }
+  }
+
+  /**
+   * Repositions game-over UI elements for the current camera size
+   */
+  layout(): void {
+    if (!this.gameOverText && !this.restartButton && !this.gameOverMsgBg) return
+    const width = Math.min(520, this.camera.width - 40)
+    const yBase = this.camera.height / 2 + 90
+    const cardY = yBase + 60
+    // Core labels
+    this.gameOverText?.setPosition(Math.round(this.camera.width / 2), Math.round(this.camera.height / 2 - 50))
+    this.restartButton?.setPosition(Math.round(this.camera.width / 2), Math.round(this.camera.height / 2 + 30))
+    if (this.gameOverBtn) {
+      const centerX = this.camera.width / 2
+      const centerY = this.camera.height / 2 + 20
+      const g = this.gameOverBtn.getAt(0) as any
+      const txt = this.gameOverBtn.getAt(1) as any
+      const hit = this.gameOverBtn.getAt(2) as any
+      if (g && txt && hit) {
+        const w = hit.width
+        const h = hit.height
+        g.clear?.()
+        g.fillStyle(0x000000, 0.3)
+        g.fillRoundedRect(Math.round(centerX - w / 2 + 2), Math.round(centerY - h / 2 + 4), w, h, 8)
+        g.fillStyle(0x272a34, 0.95)
+        g.fillRoundedRect(Math.round(centerX - w / 2), Math.round(centerY - h / 2), w, h, 8)
+        txt.setPosition(Math.round(centerX), Math.round(centerY))
+        hit.setPosition(Math.round(centerX), Math.round(centerY))
+      }
+    }
+    // Card + message layout if present
+    if (this.gameOverMsgBg) this.redrawCard(this.gameOverMsgBg, Math.round(this.camera.width / 2), Math.round(cardY), width, 120, 10, 0xffffff, 0.98)
+    this.gameOverMsgTitle?.setPosition(Math.round(this.camera.width / 2), Math.round(yBase + 20))
+    this.gameOverMsgText?.setPosition(Math.round(this.camera.width / 2), Math.round(yBase + 48))
+    if (this.gameOverMsgText) {
+      this.gameOverMsgText.setWordWrapWidth(width - 16 * 2)
+    }
   }
 
   /**
@@ -238,56 +375,34 @@ class GameOverScreen extends HudElement {
    */
   showGameOverMessage(title: string, message: string): void {
     const padding = 16
-    const width = Math.min(520, this.camera.width - 40)
-    const yBase = this.camera.height / 2 + 90
-    const cardY = yBase + 60
+    const width = Math.min(540, this.camera.width - 40)
+    const yBase = this.camera.height / 2 + 70
+    const cardY = yBase + 58
 
-    // Background card
-    this.gameOverMsgBg = this.scene.add.rectangle(
-      this.camera.width / 2,
-      cardY,
-      width,
-      120,
-      0xffffff,
-      0.92
-    ).setStrokeStyle(2, 0x222222).setDepth(1000)
+    this.gameOverMsgBg = this.makeCard(this.camera.width / 2, cardY, width, 140, 10, 0xffffff, 0.98)
 
-    // Title text
     this.gameOverMsgTitle = this.scene.add.text(
       this.camera.width / 2,
       yBase + 20,
       title,
-      {
-        fontSize: '20px',
-        color: '#111111',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2
-      }
-    ).setOrigin(0.5, 0).setDepth(1001)
+      this.createTextStyle('#111111', '20px')
+    ).setOrigin(0.5, 0).setDepth(1002)
+    this.gameOverMsgTitle.setShadow(0, 2, '#000000', 4, true, true)
+    this.applyLetterSpacing(this.gameOverMsgTitle, 0.9)
 
-    // Message text with word wrapping
     this.gameOverMsgText = this.scene.add.text(
       this.camera.width / 2,
       yBase + 48,
       message,
-      {
-        fontSize: '16px',
-        color: '#333333',
-        fontFamily: 'Arial, sans-serif',
-        wordWrap: { width: width - padding * 2 },
-        resolution: 2
-      }
-    ).setOrigin(0.5, 0).setDepth(1001)
+      this.createTextStyle('#333333', '16px')
+    ).setOrigin(0.5, 0).setDepth(1002)
+    this.gameOverMsgText.setWordWrapWidth(width - padding * 2)
+    this.applyLetterSpacing(this.gameOverMsgText, 0.7)
 
-    // Fade in animation
-    this.gameOverMsgBg.setAlpha(0)
-    this.gameOverMsgTitle.setAlpha(0)
-    this.gameOverMsgText.setAlpha(0)
-    this.scene.tweens.add({
-      targets: [this.gameOverMsgBg, this.gameOverMsgTitle, this.gameOverMsgText],
-      alpha: 1,
-      duration: 180
-    })
+    // Fade in
+    const targets: Phaser.GameObjects.GameObject[] = [this.gameOverMsgCard!, this.gameOverMsgTitle, this.gameOverMsgText]
+    targets.forEach(t => (t as any).setAlpha?.(0))
+    this.scene.tweens.add({ targets, alpha: 1, duration: 180 })
   }
 
   /**
@@ -296,15 +411,19 @@ class GameOverScreen extends HudElement {
   clearGameOver(): void {
     this.gameOverText?.destroy()
     this.restartButton?.destroy()
+    this.gameOverBtn?.destroy()
     this.gameOverMsgTitle?.destroy()
     this.gameOverMsgText?.destroy()
     this.gameOverMsgBg?.destroy()
+    this.gameOverMsgCard?.destroy()
 
     this.gameOverText = undefined
     this.restartButton = undefined
+    this.gameOverBtn = undefined
     this.gameOverMsgTitle = undefined
     this.gameOverMsgText = undefined
     this.gameOverMsgBg = undefined
+    this.gameOverMsgCard = undefined
   }
 
   /**
@@ -323,6 +442,8 @@ class GreetingScreen extends HudElement {
   private greetingTitle?: Phaser.GameObjects.Text
   private greetingMsg?: Phaser.GameObjects.Text
   private greetingClose?: Phaser.GameObjects.Text
+  private greetingCard?: Phaser.GameObjects.Container
+  private greetingBtn?: Phaser.GameObjects.Container
 
   /**
    * Shows a greeting screen with title, message, and action buttons
@@ -332,92 +453,99 @@ class GreetingScreen extends HudElement {
    */
   showGreeting(title: string, message: string, onClose?: () => void): void {
     const padding = 16
-    const width = Math.min(520, this.camera.width - 40)
+    const width = Math.min(560, this.camera.width - 40)
     const x = this.camera.width / 2 - width / 2
     const y = 80
 
-    // Background card
-    this.greetingBg = this.scene.add.rectangle(
-      x + width / 2,
-      y + 80,
-      width,
-      180,
-      0xffffff,
-      0.92
-    ).setStrokeStyle(2, 0x222222).setDepth(1000)
+    // Background card with rounded corners and shadow
+    this.greetingCard = this.makeCard(x + width / 2, y + 90, width, 200, 10, 0xffffff, 0.98)
+    this.greetingBg = (this.greetingCard.list[0] as any)
 
-    // Title text
+    // Title
     this.greetingTitle = this.scene.add.text(
-      x + width / 2,
-      y + 20,
+      Math.round(x + width / 2),
+      Math.round(y + 22),
       title,
-      {
-        fontSize: '20px',
-        color: '#111111',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2
-      }
-    ).setOrigin(0.5, 0).setDepth(1001)
+      this.createPlainTextStyle('#111111', '22px')
+    ).setOrigin(0.5, 0).setDepth(1002)
+    // No shadow for maximum crispness; increase letter spacing
+    this.applyLetterSpacing(this.greetingTitle, 1.35)
 
-    // Message text with word wrapping
+    // Message
     this.greetingMsg = this.scene.add.text(
-      this.camera.width / 2,
-      y + 50,
+      Math.round(this.camera.width / 2),
+      Math.round(y + 56),
       message,
-      {
-        fontSize: '16px',
-        color: '#333333',
-        fontFamily: 'Arial, sans-serif',
-        wordWrap: { width: width - padding * 2 },
-        resolution: 2
+      this.createPlainTextStyle('#333333', '16px', 'bold')
+    ).setOrigin(0.5, 0).setDepth(1002)
+    this.greetingMsg.setWordWrapWidth(width - padding * 2)
+    // Ensure no stroke/shadow for body message
+    this.greetingMsg.setStroke('#000000', 0)
+
+    // Start button (styled)
+    this.greetingBtn = this.makeButton('Start', x + width - 70, y + 90 + 80, () => {
+      this.clearGreeting(); onClose?.()
+    }, { bg: 0x2c7a7b, fg: '#ffffff', padding: 12 })
+
+    // Fade in
+    const targets: Phaser.GameObjects.GameObject[] = [this.greetingCard!, this.greetingTitle, this.greetingMsg, this.greetingBtn!]
+    targets.forEach(t => (t as any).setAlpha?.(0))
+    this.scene.tweens.add({ targets, alpha: 1, duration: 200 })
+  }
+
+  /**
+   * Repositions greeting UI elements for the current camera size
+   */
+  layout(): void {
+    if (!this.greetingBg && !this.greetingTitle && !this.greetingMsg) return
+    const padding = 16
+    const width = Math.min(560, this.camera.width - 40)
+    const x = this.camera.width / 2 - width / 2
+    const y = 80
+    this.greetingBg?.setPosition(x + width / 2, y + 90)
+    this.greetingBg?.setSize(width, 200)
+    this.greetingTitle?.setPosition(x + width / 2, y + 22)
+    this.greetingMsg?.setPosition(this.camera.width / 2, y + 50)
+    if (this.greetingMsg) {
+      this.greetingMsg.setWordWrapWidth(width - padding * 2)
+    }
+    if (this.greetingBtn) {
+      const centerX = x + width - 70
+      const centerY = y + 90 + 80
+      const g = this.greetingBtn.getAt(0) as any
+      const txt = this.greetingBtn.getAt(1) as any
+      const hit = this.greetingBtn.getAt(2) as any
+      if (g && txt && hit) {
+        const w = hit.width
+        const h = hit.height
+        g.clear?.()
+        g.fillStyle(0x000000, 0.3)
+        g.fillRoundedRect(centerX - w / 2 + 2, centerY - h / 2 + 4, w, h, 8)
+        g.fillStyle(0x2c7a7b, 0.95)
+        g.fillRoundedRect(centerX - w / 2, centerY - h / 2, w, h, 8)
+        txt.setPosition(centerX, centerY)
+        hit.setPosition(centerX, centerY)
       }
-    ).setOrigin(0.5, 0).setDepth(1001)
-
-    // Start game button
-    this.greetingClose = this.scene.add.text(
-      this.camera.width / 2 - 80,
-      y + 120,
-      'Start Game',
-      {
-        fontSize: '14px',
-        color: '#2563eb',
-        fontFamily: 'Arial, sans-serif',
-        resolution: 2
-      }
-    ).setOrigin(0.5, 0).setDepth(1001).setInteractive()
-
-    // Event handlers
-    this.greetingClose.on('pointerdown', () => {
-      this.clearGreeting()
-      onClose?.()
-    })
-
-    // Fade in animation
-    this.greetingBg.setAlpha(0)
-    this.greetingTitle.setAlpha(0)
-    this.greetingMsg.setAlpha(0)
-    this.greetingClose.setAlpha(0)
-
-    this.scene.tweens.add({
-      targets: [this.greetingBg, this.greetingTitle, this.greetingMsg, this.greetingClose],
-      alpha: 1,
-      duration: 180
-    })
+    }
   }
 
   /**
    * Clears all greeting screen elements
    */
   clearGreeting(): void {
+    this.greetingCard?.destroy()
     this.greetingBg?.destroy()
     this.greetingTitle?.destroy()
     this.greetingMsg?.destroy()
     this.greetingClose?.destroy()
+    this.greetingBtn?.destroy()
 
+    this.greetingCard = undefined
     this.greetingBg = undefined
     this.greetingTitle = undefined
     this.greetingMsg = undefined
     this.greetingClose = undefined
+    this.greetingBtn = undefined
   }
 
   /**
@@ -436,6 +564,7 @@ class LoadingEffects extends HudElement {
   private snowDots: Phaser.GameObjects.Rectangle[] = []
   private loadingSpinnerGroup?: Phaser.GameObjects.Container
   private loadingSpinnerTween?: Phaser.Tweens.Tween
+  private rotateOverlay?: Phaser.GameObjects.Container
 
   /**
    * Shows animated snow effect for loading screens
@@ -532,6 +661,23 @@ class LoadingEffects extends HudElement {
   }
 
   /**
+   * Repositions loading effects for the current camera size
+   */
+  layout(): void {
+    if (this.loadingSpinnerGroup) {
+      const yBase = 80
+      this.loadingSpinnerGroup.setPosition(this.camera.width / 2, yBase + 80)
+    }
+    if (this.rotateOverlay) {
+      const bg = this.rotateOverlay.getAt(0) as Phaser.GameObjects.Rectangle
+      const text = this.rotateOverlay.getAt(1) as Phaser.GameObjects.Text
+      bg.setPosition(this.camera.width / 2, this.camera.height / 2)
+      bg.setSize(this.camera.width, this.camera.height)
+      text.setPosition(Math.round(this.camera.width / 2), Math.round(this.camera.height / 2))
+    }
+  }
+
+  /**
    * Clears the loading spinner
    */
   clearLoadingSpinner(): void {
@@ -570,6 +716,35 @@ class LoadingEffects extends HudElement {
   destroy(): void {
     this.clearLoadingSnow()
     this.clearLoadingSpinner()
+    this.hideRotateOverlay()
+  }
+
+  /**
+   * Shows a full-screen overlay instructing the user to rotate to portrait
+   */
+  showRotateOverlay(): void {
+    if (this.rotateOverlay) return
+    const bg = this.scene.add.rectangle(this.camera.width / 2, this.camera.height / 2, this.camera.width, this.camera.height, 0x000000, 0.75)
+    bg.setDepth(5000)
+    const text = this.scene.add.text(
+      Math.round(this.camera.width / 2),
+      Math.round(this.camera.height / 2),
+      'Please rotate your device\nUse portrait mode',
+      this.createPlainTextStyle('#ffffff', '20px', 'bold')
+    ).setOrigin(0.5)
+    text.setDepth(5001)
+    const group = this.scene.add.container(0, 0, [bg, text])
+    group.setDepth(5000)
+    this.rotateOverlay = group
+  }
+
+  /**
+   * Hides the rotate overlay if present
+   */
+  hideRotateOverlay(): void {
+    if (!this.rotateOverlay) return
+    this.rotateOverlay.destroy()
+    this.rotateOverlay = undefined
   }
 }
 
@@ -625,6 +800,20 @@ export class Hud {
     this.greetingScreen = new GreetingScreen(scene)
     this.loadingEffects = new LoadingEffects(scene)
   }
+
+  /**
+   * Relayout all HUD components when the viewport size changes
+   */
+  layout(): void {
+    (this.display as any).layout?.()
+    ;(this.gameOverScreen as any).layout?.()
+    ;(this.greetingScreen as any).layout?.()
+    ;(this.loadingEffects as any).layout?.()
+  }
+
+  // Orientation overlay passthrough
+  showRotateOverlay(): void { this.loadingEffects.showRotateOverlay() }
+  hideRotateOverlay(): void { this.loadingEffects.hideRotateOverlay() }
 
   // --- Display Methods (Delegated to HudDisplay) ---
 
