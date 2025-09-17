@@ -43,6 +43,9 @@ import { GROUND_Y_FRAC } from './gameConfig'
 import { PerformanceMonitor, type PerformanceIssue } from './systems/PerformanceMonitor'
 import { GameLoopOptimizer } from './systems/GameLoopOptimizer'
 import { OptimizedCollisionSystem } from './systems/OptimizedCollisionSystem'
+import { RenderingOptimizer } from './systems/RenderingOptimizer'
+import { QualityAwareRenderer } from './systems/QualityAwareRenderer'
+import { DynamicQualityManager } from './systems/DynamicQualityManager'
 import { globalBenchmark } from './utils/performanceBenchmark'
 // Assets
 // Obstacle/Item sprites (explicit file name from user, and glob for others)
@@ -133,6 +136,9 @@ export class MainScene extends Phaser.Scene {
   private performanceMonitor!: PerformanceMonitor
   private gameLoopOptimizer!: GameLoopOptimizer
   private optimizedCollisionSystem!: OptimizedCollisionSystem
+  private renderingOptimizer!: RenderingOptimizer
+  private qualityAwareRenderer!: QualityAwareRenderer
+  private dynamicQualityManager!: DynamicQualityManager
 
   constructor() {
     super({ key: 'MainScene' })
@@ -277,6 +283,22 @@ export class MainScene extends Phaser.Scene {
       enableEarlyExit: true
     })
 
+    // Initialize quality management systems
+    this.dynamicQualityManager = DynamicQualityManager.getInstance()
+    this.qualityAwareRenderer = QualityAwareRenderer.getInstance()
+    
+    // Initialize rendering optimizer
+    this.renderingOptimizer = new RenderingOptimizer(
+      this,
+      this.qualityAwareRenderer,
+      this.dynamicQualityManager,
+      this.performanceMonitor
+    )
+
+    // Initialize quality systems with scene and performance monitor
+    this.qualityAwareRenderer.initialize(this, this.dynamicQualityManager)
+    this.dynamicQualityManager.initialize(this, this.performanceMonitor)
+
     // HUD
     this.hud = new Hud(this)
     this.hud.setLives(this.lives)
@@ -388,12 +410,18 @@ export class MainScene extends Phaser.Scene {
       document.removeEventListener('visibilitychange', onVisibility)
       this.inputController?.detach()
       this.particlePool?.destroy()
+      this.renderingOptimizer?.destroy()
+      this.qualityAwareRenderer?.destroy()
+      this.dynamicQualityManager?.destroy()
       this.scale.off(Phaser.Scale.Events.RESIZE, onScaleResize)
     })
     this.events.once(Phaser.Scenes.Events.DESTROY, () => {
       document.removeEventListener('visibilitychange', onVisibility)
       this.inputController?.detach()
       this.particlePool?.destroy()
+      this.renderingOptimizer?.destroy()
+      this.qualityAwareRenderer?.destroy()
+      this.dynamicQualityManager?.destroy()
       this.scale.off(Phaser.Scale.Events.RESIZE, onScaleResize)
     })
   }
@@ -509,6 +537,33 @@ export class MainScene extends Phaser.Scene {
 
     }
 
+    // Update rendering optimizations
+    this.renderingOptimizer.update()
+
+    // Apply rendering optimizations to all game objects
+    const allObjects: Phaser.GameObjects.GameObject[] = []
+    
+    // Collect obstacles for optimization
+    this.obstacles.children.each((obstacle) => {
+      if (obstacle.active) {
+        allObjects.push(obstacle as Phaser.GameObjects.GameObject)
+        this.renderingOptimizer.applyDynamicLOD(obstacle as Phaser.GameObjects.GameObject)
+      }
+      return true
+    })
+
+    // Collect items for optimization
+    this.items.children.each((item) => {
+      if (item.active) {
+        allObjects.push(item as Phaser.GameObjects.GameObject)
+        this.renderingOptimizer.applyDynamicLOD(item as Phaser.GameObjects.GameObject)
+      }
+      return true
+    })
+
+    // Apply culling to all objects
+    this.renderingOptimizer.cullObjects(allObjects)
+
     // Update obstacles using optimized batch processing
     globalBenchmark.measure('obstacle_updates', () => {
       this.gameLoopOptimizer.updateObstacles(
@@ -549,17 +604,25 @@ export class MainScene extends Phaser.Scene {
       const isIssueActive = this.performanceMonitor.isPerformanceIssueActive()
       const optimizerMetrics = this.gameLoopOptimizer.getMetrics()
       const collisionStats = this.optimizedCollisionSystem.getStats()
+      const renderingMetrics = this.renderingOptimizer.getMetrics()
+      const qualityLevel = this.dynamicQualityManager.getCurrentQualityLevel()
       
       const perfStatus = isIssueActive ? '⚠️' : '✓'
+      const emergencyStatus = this.renderingOptimizer.isEmergencyModeActive() ? '🚨' : ''
       const memoryPercent = (metrics.memoryUsage * 100).toFixed(1)
       const cullPercent = optimizerMetrics.obstaclesProcessed > 0 ? 
         ((optimizerMetrics.obstaclesCulled / (optimizerMetrics.obstaclesProcessed + optimizerMetrics.obstaclesCulled)) * 100).toFixed(0) : '0'
+      const renderCullPercent = renderingMetrics.objectsRendered > 0 ?
+        ((renderingMetrics.objectsCulled / (renderingMetrics.objectsRendered + renderingMetrics.objectsCulled)) * 100).toFixed(0) : '0'
+      const cacheHitRate = (renderingMetrics.textCacheHits + renderingMetrics.textCacheMisses) > 0 ?
+        ((renderingMetrics.textCacheHits / (renderingMetrics.textCacheHits + renderingMetrics.textCacheMisses)) * 100).toFixed(0) : '0'
       
       this.perfText.setText(
-        `${perfStatus} FPS:${metrics.currentFPS} Frame:${metrics.averageFrameTime.toFixed(1)}ms Mem:${memoryPercent}%\n` +
-        `Score:${metrics.performanceScore} Stutters:${metrics.stutterCount}\n` +
+        `${perfStatus}${emergencyStatus} FPS:${metrics.currentFPS} Frame:${metrics.averageFrameTime.toFixed(1)}ms Mem:${memoryPercent}%\n` +
+        `Score:${metrics.performanceScore} Stutters:${metrics.stutterCount} Quality:${qualityLevel.name}\n` +
         `OBS:${obs} ITM:${its} PART:a${act} p${pc.rectangles+pc.ellipses+pc.extra}\n` +
-        `Culled:${cullPercent}% Cells:${collisionStats.spatialCells} Avg/Cell:${collisionStats.averageObjectsPerCell.toFixed(1)}\n` +
+        `Culled:${cullPercent}% RenderCull:${renderCullPercent}% LOD:${renderingMetrics.lodReductions}\n` +
+        `TextCache:${cacheHitRate}% Cells:${collisionStats.spatialCells} Avg/Cell:${collisionStats.averageObjectsPerCell.toFixed(1)}\n` +
         `ObsUpd:${optimizerMetrics.obstacleUpdateTime.toFixed(1)}ms ItmUpd:${optimizerMetrics.itemUpdateTime.toFixed(1)}ms Col:${optimizerMetrics.collisionTime.toFixed(1)}ms`
       )
     }
@@ -794,6 +857,19 @@ export class MainScene extends Phaser.Scene {
   }
 
 
+
+  private handlePerformanceIssue(issue: PerformanceIssue): void {
+    console.log(`Performance issue detected: ${issue.type} (${issue.severity})`, issue.metrics)
+    
+    // The RenderingOptimizer will handle emergency mode activation automatically
+    // We can add additional scene-specific performance handling here if needed
+    
+    // For severe performance issues, we might want to reduce particle effects
+    if (issue.severity === 'high' && issue.type === 'low_fps') {
+      // Reduce particle pool size temporarily
+      this.particlePool?.setEmergencyMode?.(true)
+    }
+  }
 
   private handleItemCollection(item: Phaser.GameObjects.Rectangle) {
     const itemType = item.getData('itemType') as ItemType
