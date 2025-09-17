@@ -1,6 +1,5 @@
 import Phaser from 'phaser'
 import {
-  FALL_SPEED_MIN,
   INVULNERABILITY_MS,
   SPAWN_INTERVAL_START,
   SPAWN_INTERVAL_MIN,
@@ -8,7 +7,6 @@ import {
   BASE_POINTS_PER_SEC,
   MULTIPLIER_X,
   MULTIPLIER_MS,
-  SLOWMO_FACTOR,
   SLOWMO_MS,
   LIFE_MAX,
   POINTS_ITEM_BONUS,
@@ -21,20 +19,19 @@ import {
   PLAYER_SIZE,
   MAX_OBSTACLES,
   MAX_ITEMS_AIR,
-  DYNAMICS_ENABLED,
-  OBSTACLE_SWAY_AMP,
-  OBSTACLE_SWAY_FREQ,
   COLLIDE_SHRINK_PLAYER,
   COLLIDE_SHRINK_ITEM,
   HITBOX_GLOBAL_SHRINK
   , ANGEL_INVULN_MS
 } from './gameConfig'
 import { ItemType } from './items'
-import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo, slowMoFactor } from './systems/scoring'
+import { createScoreState, tickScore, applyPoints, applyMultiplier, applySlowMo } from './systems/scoring'
 import { getHighscore } from './services/localHighscore'
 import { Hud } from './ui/Hud'
+import { toggleHighContrast } from './utils/highContrastConfig'
+import { TextReadabilityIntegration } from './utils/textReadabilityIntegration'
 import { ObstacleSpawner, ItemSpawner } from './systems/Spawner'
-import { checkObstacleCollision as collideObstacles, checkItemCollisions as collideItems } from './systems/CollisionSystem'
+import { checkObstacleCollision as collideObstacles } from './systems/CollisionSystem'
 import { startSession, submitSession } from './services/api'
 import type { SubmitSessionRequest } from './services/api'
 import { drawSkyscraperBackground } from './systems/background'
@@ -43,6 +40,10 @@ import { InputController } from './systems/InputController'
 import { ParticlePool } from './systems/ParticlePool'
 import { ToppledManager } from './systems/ToppledManager'
 import { GROUND_Y_FRAC } from './gameConfig'
+import { PerformanceMonitor, type PerformanceIssue } from './systems/PerformanceMonitor'
+import { GameLoopOptimizer } from './systems/GameLoopOptimizer'
+import { OptimizedCollisionSystem } from './systems/OptimizedCollisionSystem'
+import { globalBenchmark } from './utils/performanceBenchmark'
 // Assets
 // Obstacle/Item sprites (explicit file name from user, and glob for others)
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -128,6 +129,10 @@ export class MainScene extends Phaser.Scene {
   private lastHitObstacle?: Phaser.GameObjects.Sprite
   private lastHitSafeUntil: number = 0
   private orientationPaused: boolean = false
+  private textReadabilityIntegration!: TextReadabilityIntegration
+  private performanceMonitor!: PerformanceMonitor
+  private gameLoopOptimizer!: GameLoopOptimizer
+  private optimizedCollisionSystem!: OptimizedCollisionSystem
 
   constructor() {
     super({ key: 'MainScene' })
@@ -229,6 +234,47 @@ export class MainScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-H', () => {
       this.debugHitboxes = !this.debugHitboxes
       this.debugGfx!.setVisible(this.debugHitboxes)
+    })
+
+    // High contrast mode toggle (Ctrl+Shift+C)
+    this.input.keyboard!.on('keydown-C', (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey) {
+        const enabled = toggleHighContrast()
+        console.log(`High contrast mode ${enabled ? 'enabled' : 'disabled'}`)
+        
+        // Show a brief notification
+        this.showHighContrastNotification(enabled)
+      }
+    })
+
+    // Text readability system testing (Ctrl+Shift+T)
+    this.input.keyboard!.on('keydown-T', (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey) {
+        this.runTextReadabilityTests()
+      }
+    })
+
+    // Initialize text readability integration
+    this.textReadabilityIntegration = new TextReadabilityIntegration(this)
+    this.textReadabilityIntegration.wireTextComponents()
+
+    // Initialize performance monitoring
+    this.performanceMonitor = new PerformanceMonitor()
+    this.performanceMonitor.onPerformanceIssue((issue: PerformanceIssue) => {
+      this.handlePerformanceIssue(issue)
+    })
+
+    // Initialize game loop optimizer
+    this.gameLoopOptimizer = new GameLoopOptimizer(this, {
+      enableCulling: true,
+      enableBatching: true,
+      enableSpatialPartitioning: true
+    })
+
+    // Initialize optimized collision system
+    this.optimizedCollisionSystem = new OptimizedCollisionSystem({
+      enableSpatialPartitioning: true,
+      enableEarlyExit: true
     })
 
     // HUD
@@ -355,8 +401,14 @@ export class MainScene extends Phaser.Scene {
   // background rendering moved to systems/background.ts
 
   update(time: number, delta: number) {
+    // Start performance monitoring for this frame
+    this.performanceMonitor.startFrame()
+    
     // Spinner rotation uses tweens; no per-frame tick needed
-    if (this.isPaused) return
+    if (this.isPaused) {
+      this.performanceMonitor.endFrame()
+      return
+    }
     if (this.isGameOver) {
       if (this.postGameRunLeftMs > 0) {
         this.postGameRunLeftMs -= delta
@@ -457,60 +509,34 @@ export class MainScene extends Phaser.Scene {
 
     }
 
-    // Update obstacles (move them down + optional drift/rotation)
-    const slowMoFactorValue = slowMoFactor(this.scoreState, SLOWMO_FACTOR)
-    this.obstacles.children.each((obstacle) => {
-      const obs = obstacle as Phaser.GameObjects.Sprite
-      const obsBody = obs.body as Phaser.Physics.Arcade.Body
-      const speed = (obs.getData('speed') as number) ?? FALL_SPEED_MIN
-      obsBody.setVelocityY(speed * slowMoFactorValue) // Apply slow motion
-
-      if (DYNAMICS_ENABLED) {
-        const dt = delta / 1000
-        const vx = (obs.getData('vx') as number) || 0
-        const swayPhase = (obs.getData('swayPhase') as number) || 0
-        const sway = OBSTACLE_SWAY_AMP * Math.sin((time / 1000 + swayPhase) * OBSTACLE_SWAY_FREQ)
-        obsBody.setVelocityX(vx + sway)
-        const omega = (obs.getData('omega') as number) || 0
-        obs.setAngle((obs.angle || 0) + omega * dt)
-        // Edge bounce
-        const margin = 20
-        if (obs.x < margin || obs.x > this.cameras.main.width - margin) {
-          const nvx = -((obs.getData('vx') as number) || 0)
-          obs.setData('vx', nvx)
-        }
-      } else {
-        obsBody.setVelocityX(0)
-      }
-
-      // Remove obstacles that have fallen off screen
-      if (obs.y > this.cameras.main.height + 50) {
-        this.removeObstacle(obs)
-      }
-
-      return true
+    // Update obstacles using optimized batch processing
+    globalBenchmark.measure('obstacle_updates', () => {
+      this.gameLoopOptimizer.updateObstacles(
+        this.obstacles,
+        this.scoreState,
+        time,
+        delta,
+        (obstacle) => this.removeObstacle(obstacle)
+      )
     })
 
-    // Update items (move them down)
-    this.items.children.each((item) => {
-      const itm = item as Phaser.GameObjects.Rectangle
-      const itmBody = itm.body as Phaser.Physics.Arcade.Body
-      const speed = (itm.getData('speed') as number) ?? FALL_SPEED_MIN
-      itmBody.setVelocityY(speed * slowMoFactorValue) // Apply slow motion
-
-      // Remove items that have fallen off screen
-      if (itm.y > this.cameras.main.height + 50) {
-        this.removeItem(itm)
-      }
-
-      return true
+    // Update items using optimized batch processing
+    globalBenchmark.measure('item_updates', () => {
+      this.gameLoopOptimizer.updateItems(
+        this.items,
+        this.scoreState,
+        (item) => this.removeItem(item)
+      )
     })
 
-    // Check collisions
-    if (!this.isGameOver) this.checkCollisions()
+    // Check collisions using optimized system
+    if (!this.isGameOver) {
+      globalBenchmark.measure('collision_checks', () => {
+        this.checkCollisionsOptimized()
+      })
+    }
     // Update toppled trees
     this.toppledManager.update(delta)
-    this.checkItemCollisions()
 
 
     // Update perf HUD
@@ -519,7 +545,23 @@ export class MainScene extends Phaser.Scene {
       const its = this.items.countActive(true)
       const act = this.particlePool.getActiveCount()
       const pc = this.particlePool.getPooledCounts()
-      this.perfText.setText(`OBS:${obs}  ITM:${its}  PART:a${act} p${pc.rectangles+pc.ellipses+pc.extra}`)
+      const metrics = this.performanceMonitor.getPerformanceMetrics()
+      const isIssueActive = this.performanceMonitor.isPerformanceIssueActive()
+      const optimizerMetrics = this.gameLoopOptimizer.getMetrics()
+      const collisionStats = this.optimizedCollisionSystem.getStats()
+      
+      const perfStatus = isIssueActive ? '⚠️' : '✓'
+      const memoryPercent = (metrics.memoryUsage * 100).toFixed(1)
+      const cullPercent = optimizerMetrics.obstaclesProcessed > 0 ? 
+        ((optimizerMetrics.obstaclesCulled / (optimizerMetrics.obstaclesProcessed + optimizerMetrics.obstaclesCulled)) * 100).toFixed(0) : '0'
+      
+      this.perfText.setText(
+        `${perfStatus} FPS:${metrics.currentFPS} Frame:${metrics.averageFrameTime.toFixed(1)}ms Mem:${memoryPercent}%\n` +
+        `Score:${metrics.performanceScore} Stutters:${metrics.stutterCount}\n` +
+        `OBS:${obs} ITM:${its} PART:a${act} p${pc.rectangles+pc.ellipses+pc.extra}\n` +
+        `Culled:${cullPercent}% Cells:${collisionStats.spatialCells} Avg/Cell:${collisionStats.averageObjectsPerCell.toFixed(1)}\n` +
+        `ObsUpd:${optimizerMetrics.obstacleUpdateTime.toFixed(1)}ms ItmUpd:${optimizerMetrics.itemUpdateTime.toFixed(1)}ms Col:${optimizerMetrics.collisionTime.toFixed(1)}ms`
+      )
     }
 
     // Draw debug hitboxes if enabled
@@ -579,6 +621,9 @@ export class MainScene extends Phaser.Scene {
         return true
       })
     }
+
+    // End performance monitoring for this frame
+    this.performanceMonitor.endFrame()
   }
 
   private drawRect(g: Phaser.GameObjects.Graphics, r: Phaser.Geom.Rectangle, color: number) {
@@ -680,35 +725,54 @@ export class MainScene extends Phaser.Scene {
     this.obstacleSpawner.remove(obstacle)
   }
 
-  private checkCollisions() {
+
+
+  private checkCollisionsOptimized() {
     if (this.invulnerable) return
-    let registered = false
-    // Falling obstacles: topple on hit
-    collideObstacles(this.player, this.obstacles, (obs) => {
-      if (registered) return
-      registered = true
-      if (this.lastHitObstacle && obs === this.lastHitObstacle && this.time.now < this.lastHitSafeUntil) { return }
-      this.onObstacleHit(obs as Phaser.GameObjects.Sprite, true)
-    })
-    // Settled trees: resolve overlap without damage
-    collideObstacles(this.player, this.toppledBlocking, (obs) => {
-      if (registered) return; registered = true;
-      // Only push if enough time has passed since last collision push
-      if (this.collisionPushTimer <= 0) {
-        const o:any = obs as any; const dir = (this.player.x >= o.x) ? 1 : -1;
-        // Apply gentle push using physics instead of instant teleport
-        const pushForce = 8 * dir;
-        const playerBody = (this.player as any).body;
-        if (playerBody) {
-          playerBody.setVelocityX(playerBody.velocity?.x + pushForce);
-        } else {
-          // Fallback for non-physics objects
-          this.player.x += pushForce;
-        }
-        this.collisionPushTimer = this.COLLISION_PUSH_COOLDOWN;
+    
+    let obstacleHit = false
+    let itemCollected = false
+
+    // Use optimized collision system for falling obstacles and items
+    this.optimizedCollisionSystem.checkCollisions(
+      this.player,
+      this.obstacles,
+      this.items,
+      (obs) => {
+        if (obstacleHit) return
+        if (this.lastHitObstacle && obs === this.lastHitObstacle && this.time.now < this.lastHitSafeUntil) { return }
+        this.onObstacleHit(obs, true)
+        obstacleHit = true
+      },
+      (item) => {
+        if (itemCollected) return
+        this.handleItemCollection(item)
+        itemCollected = true
       }
-      // No damage on settled trees
-    })
+    )
+
+    // Handle settled trees with original collision system (these don't move much so optimization is less critical)
+    if (!obstacleHit) {
+      collideObstacles(this.player, this.toppledBlocking, (obs) => {
+        if (obstacleHit) return
+        obstacleHit = true
+        // Only push if enough time has passed since last collision push
+        if (this.collisionPushTimer <= 0) {
+          const o:any = obs as any; const dir = (this.player.x >= o.x) ? 1 : -1;
+          // Apply gentle push using physics instead of instant teleport
+          const pushForce = 8 * dir;
+          const playerBody = (this.player as any).body;
+          if (playerBody) {
+            playerBody.setVelocityX(playerBody.velocity?.x + pushForce);
+          } else {
+            // Fallback for non-physics objects
+            this.player.x += pushForce;
+          }
+          this.collisionPushTimer = this.COLLISION_PUSH_COOLDOWN;
+        }
+        // No damage on settled trees
+      })
+    }
   }
 
   private onObstacleHit(obstacle: Phaser.GameObjects.Sprite, canTopple: boolean) {
@@ -729,9 +793,7 @@ export class MainScene extends Phaser.Scene {
     this.itemSpawner.remove(item)
   }
 
-  private checkItemCollisions() {
-    collideItems(this.player, this.items, (itm) => this.handleItemCollection(itm))
-  }
+
 
   private handleItemCollection(item: Phaser.GameObjects.Rectangle) {
     const itemType = item.getData('itemType') as ItemType
@@ -1024,6 +1086,62 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Shows a brief notification about high contrast mode toggle
+   * @param enabled - Whether high contrast mode is now enabled
+   */
+  private showHighContrastNotification(enabled: boolean): void {
+    const message = enabled ? 'High Contrast Mode: ON' : 'High Contrast Mode: OFF'
+    const color = enabled ? '#ffff00' : '#ffffff' // Yellow for on, white for off
+    
+    // Create notification text
+    const notification = this.add.text(
+      this.cameras.main.width / 2,
+      50,
+      message,
+      {
+        fontSize: '20px',
+        color,
+        fontFamily: 'Arial, sans-serif',
+        stroke: '#000000',
+        strokeThickness: 3,
+        shadow: {
+          offsetX: 0,
+          offsetY: 2,
+          color: '#000000',
+          blur: 4,
+          stroke: true,
+          fill: true,
+        },
+      }
+    )
+    .setOrigin(0.5, 0.5)
+    .setDepth(2000)
+
+    // Fade in, hold, then fade out
+    notification.setAlpha(0)
+    this.tweens.add({
+      targets: notification,
+      alpha: 1,
+      duration: 200,
+      ease: 'Power2.easeOut',
+      onComplete: () => {
+        // Hold for 1.5 seconds, then fade out
+        this.time.delayedCall(1500, () => {
+          this.tweens.add({
+            targets: notification,
+            alpha: 0,
+            duration: 300,
+            ease: 'Power2.easeIn',
+            onComplete: () => {
+              notification.destroy()
+            }
+          })
+        })
+      }
+    })
+  }
+
   private restartGame() {
     // Reset game state
     this.lives = 3
@@ -1081,5 +1199,83 @@ export class MainScene extends Phaser.Scene {
 
     // Resume physics
     this.physics.resume()
+  }
+
+  /**
+   * Handles performance issues detected by the performance monitor
+   */
+  private handlePerformanceIssue(issue: PerformanceIssue): void {
+    console.warn(`Performance issue detected: ${issue.type} (${issue.severity})`, {
+      timestamp: issue.timestamp,
+      duration: issue.duration,
+      metrics: issue.metrics
+    })
+
+    // Log performance issue for debugging
+    const logMessage = `PERF: ${issue.type.toUpperCase()} ${issue.severity} - FPS: ${issue.metrics.currentFPS}, Frame: ${issue.metrics.averageFrameTime.toFixed(2)}ms, Memory: ${(issue.metrics.memoryUsage * 100).toFixed(1)}%`
+    console.log(logMessage)
+
+    // Show performance warning in HUD if severe
+    if (issue.severity === 'high' && this.hud) {
+      const warningMessage = issue.type === 'stutter' 
+        ? `Performance stutter detected (${issue.duration.toFixed(0)}ms)`
+        : issue.type === 'low_fps'
+        ? `Low FPS detected (${issue.metrics.currentFPS})`
+        : `Memory pressure detected (${(issue.metrics.memoryUsage * 100).toFixed(1)}%)`
+      
+      this.hud.showStatusText?.(warningMessage, 'warning', 2000)
+    }
+  }
+
+  /**
+   * Runs comprehensive text readability tests and displays results
+   */
+  private async runTextReadabilityTests(): Promise<void> {
+    console.log('Running comprehensive text readability tests...')
+    
+    try {
+      // Show loading notification
+      this.hud.showStatusText('Running accessibility tests...', 'info', 0)
+      
+      // Run comprehensive tests
+      const results = await this.textReadabilityIntegration.runComprehensiveTests()
+      
+      // Hide loading notification
+      this.hud.hideStatusText()
+      
+      // Display results summary
+      const passedTests = [
+        results.hudAccessibility.passed,
+        results.messageBoxAccessibility.passed,
+        results.greetingScreenAccessibility.passed,
+        results.highContrastMode.passed,
+        results.responsiveScaling.passed,
+        results.crossDeviceCompatibility.passed
+      ].filter(passed => passed).length
+      
+      const totalTests = 6
+      const scoreColor = results.overallScore >= 90 ? 'info' : results.overallScore >= 70 ? 'warning' : 'error'
+      
+      this.hud.showStatusText(
+        `Accessibility Tests: ${passedTests}/${totalTests} passed (Score: ${results.overallScore}%)`,
+        scoreColor,
+        5000
+      )
+      
+      // Log detailed results to console
+      console.log('Text Readability Test Results:', results)
+      
+      // Validate accessibility compliance
+      const compliance = this.textReadabilityIntegration.validateAccessibilityCompliance()
+      console.log('Accessibility Compliance:', compliance)
+      
+      if (!compliance.compliant) {
+        console.warn('Accessibility violations found:', compliance.violations)
+      }
+      
+    } catch (error) {
+      console.error('Text readability tests failed:', error)
+      this.hud.showStatusText('Accessibility tests failed', 'error', 3000)
+    }
   }
 }

@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { MAX_PARTICLES } from '../gameConfig'
+import { EnhancedObjectPool, PoolStats, DEFAULT_POOL_CONFIG } from './EnhancedObjectPool'
 
 /**
  * Base configuration options for spawning particles.
@@ -63,11 +64,12 @@ interface PoolCounts {
  * Manages object pooling for particle effects to improve performance.
  * Reuses particle objects instead of creating/destroying them frequently.
  * Supports rectangle and ellipse particles with customizable animations.
+ * Enhanced with intelligent pool management and memory optimization.
  */
 export class ParticlePool {
   private readonly scene: Phaser.Scene;
-  private readonly rectanglePool: Phaser.GameObjects.Rectangle[] = [];
-  private readonly ellipsePool: Phaser.GameObjects.Ellipse[] = [];
+  private readonly rectanglePool: EnhancedObjectPool<Phaser.GameObjects.Rectangle>;
+  private readonly ellipsePool: EnhancedObjectPool<Phaser.GameObjects.Ellipse>;
   private readonly extraPool: Phaser.GameObjects.GameObject[] = [];
   private activeParticleCount = 0;
 
@@ -77,6 +79,31 @@ export class ParticlePool {
    */
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+    
+    // Initialize enhanced pools for rectangles and ellipses
+    this.rectanglePool = new EnhancedObjectPool(
+      () => this.createRectangle(),
+      (rect) => this.resetRectangle(rect),
+      (rect) => this.destroyRectangle(rect),
+      {
+        ...DEFAULT_POOL_CONFIG,
+        initialSize: 20,
+        maxSize: Math.floor(MAX_PARTICLES * 0.7), // 70% for rectangles
+        minSize: 10
+      }
+    );
+    
+    this.ellipsePool = new EnhancedObjectPool(
+      () => this.createEllipse(),
+      (ellipse) => this.resetEllipse(ellipse),
+      (ellipse) => this.destroyEllipse(ellipse),
+      {
+        ...DEFAULT_POOL_CONFIG,
+        initialSize: 10,
+        maxSize: Math.floor(MAX_PARTICLES * 0.3), // 30% for ellipses
+        minSize: 5
+      }
+    );
   }
 
   /**
@@ -90,54 +117,135 @@ export class ParticlePool {
   }
 
   /**
-   * Acquires a rectangle from the pool or creates a new one.
-   * Reuses existing rectangles when available to improve performance.
+   * Creates a new rectangle particle.
+   * @returns A new rectangle particle
+   * @private
+   */
+  private createRectangle(): Phaser.GameObjects.Rectangle {
+    const rectangle = this.scene.add.rectangle(0, 0, 2, 2, 0xffffff, 1);
+    rectangle.setDepth(900);
+    return rectangle;
+  }
+
+  /**
+   * Creates a new ellipse particle.
+   * @returns A new ellipse particle
+   * @private
+   */
+  private createEllipse(): Phaser.GameObjects.Ellipse {
+    const ellipse = this.scene.add.ellipse(0, 0, 4, 4, 0xffffff, 1);
+    ellipse.setDepth(900);
+    return ellipse;
+  }
+
+  /**
+   * Resets a rectangle particle for reuse.
+   * @param rectangle - The rectangle to reset
+   * @private
+   */
+  private resetRectangle(rectangle: Phaser.GameObjects.Rectangle): void {
+    rectangle.setActive(false);
+    rectangle.setVisible(false);
+    rectangle.setAlpha(1);
+    rectangle.setPosition(0, 0);
+    rectangle.setSize(2, 2);
+    rectangle.setFillStyle(0xffffff, 1);
+    
+    // Kill any existing tweens
+    try {
+      this.scene.tweens?.killTweensOf?.(rectangle);
+    } catch (error) {
+      console.warn('Failed to kill tweens for rectangle particle:', error);
+    }
+  }
+
+  /**
+   * Resets an ellipse particle for reuse.
+   * @param ellipse - The ellipse to reset
+   * @private
+   */
+  private resetEllipse(ellipse: Phaser.GameObjects.Ellipse): void {
+    ellipse.setActive(false);
+    ellipse.setVisible(false);
+    ellipse.setAlpha(1);
+    ellipse.setPosition(0, 0);
+    ellipse.setSize(4, 4);
+    ellipse.setFillStyle(0xffffff, 1);
+    
+    // Kill any existing tweens
+    try {
+      this.scene.tweens?.killTweensOf?.(ellipse);
+    } catch (error) {
+      console.warn('Failed to kill tweens for ellipse particle:', error);
+    }
+  }
+
+  /**
+   * Destroys a rectangle particle.
+   * @param rectangle - The rectangle to destroy
+   * @private
+   */
+  private destroyRectangle(rectangle: Phaser.GameObjects.Rectangle): void {
+    try {
+      this.scene.tweens?.killTweensOf?.(rectangle);
+      rectangle.destroy?.();
+    } catch (error) {
+      console.warn('Failed to destroy rectangle particle:', error);
+    }
+  }
+
+  /**
+   * Destroys an ellipse particle.
+   * @param ellipse - The ellipse to destroy
+   * @private
+   */
+  private destroyEllipse(ellipse: Phaser.GameObjects.Ellipse): void {
+    try {
+      this.scene.tweens?.killTweensOf?.(ellipse);
+      ellipse.destroy?.();
+    } catch (error) {
+      console.warn('Failed to destroy ellipse particle:', error);
+    }
+  }
+
+  /**
+   * Acquires a rectangle from the enhanced pool.
    * @returns A rectangle particle ready for use
+   * @private
    */
   private acquireRectangle(): Phaser.GameObjects.Rectangle {
-    const pooledRectangle = this.rectanglePool.pop();
-    if (pooledRectangle) {
-      return pooledRectangle;
-    }
-
-    const newRectangle = this.scene.add.rectangle(0, 0, 2, 2, 0xffffff, 1);
-    newRectangle.setDepth(900);
-    return newRectangle;
+    return this.rectanglePool.acquire();
   }
 
   /**
-   * Acquires an ellipse from the pool or creates a new one.
-   * Reuses existing ellipses when available to improve performance.
+   * Acquires an ellipse from the enhanced pool.
    * @returns An ellipse particle ready for use
+   * @private
    */
   private acquireEllipse(): Phaser.GameObjects.Ellipse {
-    const pooledEllipse = this.ellipsePool.pop();
-    if (pooledEllipse) {
-      return pooledEllipse;
-    }
-
-    const newEllipse = this.scene.add.ellipse(0, 0, 4, 4, 0xffffff, 1);
-    newEllipse.setDepth(900);
-    return newEllipse;
+    return this.ellipsePool.acquire();
   }
 
   /**
-   * Releases a particle back to the appropriate pool.
-   * Resets the particle state and makes it available for reuse.
+   * Releases a particle back to the appropriate enhanced pool.
    * @param particle - The particle to release back to the pool
+   * @private
    */
   private releaseParticle(particle: Phaser.GameObjects.GameObject): void {
     this.activeParticleCount = Math.max(0, this.activeParticleCount - 1);
-    particle.setActive(false);
-    (particle as any).visible = false;
 
     if (particle instanceof Phaser.GameObjects.Rectangle) {
-      this.rectanglePool.push(particle);
+      this.rectanglePool.release(particle);
     } else if (particle instanceof Phaser.GameObjects.Ellipse) {
-      this.ellipsePool.push(particle);
+      this.ellipsePool.release(particle);
     } else {
       // Fallback for unknown particle types
-      particle.destroy();
+      try {
+        this.scene.tweens?.killTweensOf?.(particle);
+        particle.destroy?.();
+      } catch (error) {
+        console.warn('Failed to destroy unknown particle type:', error);
+      }
     }
   }
 
@@ -296,11 +404,58 @@ export class ParticlePool {
    * @returns Object containing counts for each pool type
    */
   getPooledCounts(): PoolCounts {
+    const rectStats = this.rectanglePool.getStats();
+    const ellipseStats = this.ellipsePool.getStats();
+    
     return {
-      rectangles: this.rectanglePool.length,
-      ellipses: this.ellipsePool.length,
+      rectangles: rectStats.poolSize,
+      ellipses: ellipseStats.poolSize,
       extra: this.extraPool.length
     };
+  }
+
+  /**
+   * Gets detailed performance statistics for all pools.
+   * @returns Comprehensive pool performance data
+   */
+  getPoolStats(): {
+    rectangles: PoolStats;
+    ellipses: PoolStats;
+    totalActive: number;
+    memoryEfficiency: number;
+  } {
+    const rectStats = this.rectanglePool.getStats();
+    const ellipseStats = this.ellipsePool.getStats();
+    
+    const totalReused = rectStats.totalReused + ellipseStats.totalReused;
+    const totalCreated = rectStats.totalCreated + ellipseStats.totalCreated;
+    const memoryEfficiency = totalCreated > 0 ? totalReused / totalCreated : 1;
+    
+    return {
+      rectangles: rectStats,
+      ellipses: ellipseStats,
+      totalActive: this.activeParticleCount,
+      memoryEfficiency
+    };
+  }
+
+  /**
+   * Forces optimization of pool sizes based on usage patterns.
+   */
+  optimizePools(): void {
+    this.rectanglePool.adjustPoolSize();
+    this.ellipsePool.adjustPoolSize();
+  }
+
+  /**
+   * Gets memory pressure indicator for the particle system.
+   * @returns Memory pressure value (0-1, higher = more pressure)
+   */
+  getMemoryPressure(): number {
+    const rectStats = this.rectanglePool.getStats();
+    const ellipseStats = this.ellipsePool.getStats();
+    
+    return Math.max(rectStats.memoryPressure, ellipseStats.memoryPressure);
   }
 
   /**
@@ -309,12 +464,10 @@ export class ParticlePool {
    * Safely handles tween cleanup and error conditions.
    */
   destroy(): void {
-    this.destroyPool(this.rectanglePool);
-    this.destroyPool(this.ellipsePool);
+    this.rectanglePool.destroy();
+    this.ellipsePool.destroy();
     this.destroyPool(this.extraPool);
 
-    this.rectanglePool.length = 0;
-    this.ellipsePool.length = 0;
     this.extraPool.length = 0;
     this.activeParticleCount = 0;
   }
